@@ -5,11 +5,22 @@ import { v4 as uuidv4 } from 'uuid';
 import { extname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { UPLOAD_DIR, OUTPUT_DIR } from './constants.js';
-import { renderVideo, activeJobs } from './renderer.js';
+import { renderVideo, activeJobs, jobStatus } from './renderer.js';
 import { parseDurationToSeconds } from './utils.js';
+import { spawnSync } from 'child_process';
+import ffmpegStatic from 'ffmpeg-static';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Verify FFmpeg is available
+const FFMPEG_PATH = ffmpegStatic || 'ffmpeg';
+const ffmpegCheck = spawnSync(FFMPEG_PATH, ['-version'], { stdio: 'pipe' });
+if (ffmpegCheck.error || ffmpegCheck.status !== 0) {
+  console.error('FFmpeg not found. Please install ffmpeg-static or ensure FFmpeg is in PATH.');
+  process.exit(1);
+}
+console.log('FFmpeg detected:', FFMPEG_PATH);
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -31,6 +42,26 @@ const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024 } });
 
 // Health check
 app.get('/health', (_req, res) => res.json({ ok: true, ffmpeg: true }));
+
+// Job status with error tracking
+app.get('/status/:jobId', (req, res) => {
+  const { jobId } = req.params;
+  const outputFile = join(OUTPUT_DIR, `${jobId}.mp4`);
+  if (existsSync(outputFile)) {
+    return res.json({ ok: true, status: 'done', url: `/outputs/${jobId}.mp4` });
+  }
+  const st = jobStatus.get(jobId);
+  if (st) {
+    if (st.status === 'error') {
+      return res.json({ ok: false, status: 'error', error: st.error || 'Render failed' });
+    }
+    return res.json({ ok: true, status: 'processing', progress: st.progress || 45 });
+  }
+  if (activeJobs.has(jobId)) {
+    return res.json({ ok: true, status: 'processing', progress: 45 });
+  }
+  res.json({ ok: true, status: 'unknown' });
+});
 
 // Upload photos (multipart)
 app.post('/upload/photos', upload.array('photos', 100), (req, res) => {
@@ -94,14 +125,15 @@ app.post('/render', async (req, res) => {
     res.json({ ok: true, jobId, status: 'processing' });
 
     // Start render after response
+    jobStatus.set(jobId, { status: 'processing', progress: 0 });
     setImmediate(async () => {
       try {
         const outputPath = await renderVideo(job);
-        const outputUrl = `/outputs/${jobId}.mp4`;
+        jobStatus.set(jobId, { status: 'done', progress: 100 });
         console.log(`[${jobId}] Done: ${outputPath}`);
-        // You can store in a DB or notify via websocket; for now, poll GET /status/:id
       } catch (err) {
         console.error(`[${jobId}] Render failed:`, err.message);
+        jobStatus.set(jobId, { status: 'error', error: err.message || 'Render failed' });
       }
     });
   } catch (e) {
@@ -109,18 +141,6 @@ app.post('/render', async (req, res) => {
   }
 });
 
-// Poll status
-app.get('/status/:jobId', (req, res) => {
-  const { jobId } = req.params;
-  const outputFile = join(OUTPUT_DIR, `${jobId}.mp4`);
-  if (existsSync(outputFile)) {
-    return res.json({ ok: true, status: 'done', url: `/outputs/${jobId}.mp4` });
-  }
-  if (activeJobs.has(jobId)) {
-    return res.json({ ok: true, status: 'processing', progress: 45 });
-  }
-  res.json({ ok: true, status: 'unknown' });
-});
 
 // Cleanup job
 app.delete('/job/:jobId', async (req, res) => {

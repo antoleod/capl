@@ -131,6 +131,7 @@ export default function CaplyApp() {
     try {
       const { data } = await api.get(`/status/${jid}`);
       if (data.status === "done") { setPhase("done"); setProgress(100); setStep("Export ready"); setOutputUrl(`${API_BASE}${data.url}`); return true; }
+      if (data.status === "error") { setPhase("error"); setErrorMsg(data.error || "Render failed on server."); setProgress(0); return true; }
       if (data.status === "processing") setProgress(p => Math.max(p, data.progress || p + 2));
     } catch { /* ignore */ }
     return false;
@@ -203,7 +204,7 @@ export default function CaplyApp() {
 
   const generated = phase === "done";
   const controlsProps = {
-    audioInputRef, handleAudio, audio, removeAudio,
+    audioInputRef, audio, removeAudio,
     duration, setDuration, customDuration, setCustomDuration, customUnit, setCustomUnit,
     style, setStyle, aspect, setAspect, quality, setQuality,
     fps, setFps, bitrate, setBitrate, transition, setTransition,
@@ -434,7 +435,7 @@ function AISummary({ audio, durationLabel, quality }: { audio: { name: string } 
 
 function Controls(props: any) {
   const {
-    audioInputRef, handleAudio, audio, removeAudio,
+    audioInputRef, audio, removeAudio,
     duration, setDuration, customDuration, setCustomDuration, customUnit, setCustomUnit,
     style, setStyle, aspect, setAspect, quality, setQuality,
     fps, setFps, bitrate, setBitrate, transition, setTransition,
