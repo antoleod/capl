@@ -62,7 +62,7 @@ export function useCaply() {
   );
 
   const allMedia = useMemo(() => {
-    return [...photos, ...videos];
+    return [...photos, ...videos] as (MediaPhoto & { type: 'image' | 'video' })[];
   }, [photos, videos]);
 
   const hasAudio = useMemo(() => !!audio, [audio]);

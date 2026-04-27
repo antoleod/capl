@@ -1,9 +1,9 @@
-import React from 'react';
 import { useCaply, STYLE_OPTIONS, ASPECT_OPTIONS } from '../hooks/useCaply';
 
 export const EditorUI = () => {
   const {
-    allMedia, aspect, setAspect, style, setStyle, audio, hasAudio,
+    allMedia, aspect, setAspect, style, setStyle, audio, hasAudio, removeAudio,
+    audioLoop, setAudioLoop, audioVolume, setAudioVolume,
     showAdvancedSettings, setShowAdvancedSettings, advancedSummary,
     quality, setQuality, fps, setFps, bitrate, setBitrate, transition, setTransition,
     generate, phase, progress, audioInputRef, handleAudio, removePhoto, removeVideo

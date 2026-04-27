@@ -8,6 +8,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { renderVideo, jobStatus } from './renderer.js';
 import { UPLOAD_DIR, OUTPUT_DIR } from './constants.js';
+import cron from 'node-cron';
 
 const app = express();
 const port = 3001;
@@ -20,6 +21,46 @@ const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
+
+// Función de utilidad para limpiar archivos antiguos
+const cleanupOldFiles = (directory, maxAgeHours = 24) => {
+  const threshold = Date.now() - (maxAgeHours * 60 * 60 * 1000);
+
+  fs.readdir(directory, (err, files) => {
+    if (err) {
+      console.error(`[Cleanup] Error leyendo ${directory}:`, err);
+      return;
+    }
+
+    files.forEach(file => {
+      if (file === '.gitkeep') return;
+      const filePath = path.join(directory, file);
+
+      fs.stat(filePath, (err, stats) => {
+        if (err) return;
+        if (stats.mtimeMs < threshold) {
+          fs.unlink(filePath, (err) => {
+            if (err) console.error(`[Cleanup] Error eliminando ${file}:`, err);
+            else console.log(`[Cleanup] Archivo antiguo eliminado: ${file}`);
+          });
+        }
+      });
+    });
+  });
+};
+
+// Programar limpieza automática cada hora
+cron.schedule('0 * * * *', () => {
+  console.log('[Cleanup] Iniciando mantenimiento de archivos...');
+  cleanupOldFiles(uploadsDir);
+  cleanupOldFiles(OUTPUT_DIR);
+
+  // Limpiar también los trabajos antiguos del Map para liberar memoria
+  const threshold = Date.now() - (24 * 60 * 60 * 1000);
+  for (const [id, job] of jobs.entries()) {
+    if (job.createdAt < threshold) jobs.delete(id);
+  }
+});
 
 // Almacenamiento temporal de trabajos de renderizado
 const jobs = new Map();
