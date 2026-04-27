@@ -2,7 +2,7 @@ name: Security Audit
 
 on:
   schedule:
-    - cron: "0 0 * * 1" # Se ejecuta cada lunes a medianoche
+    - cron: "0 0 * * 1" # Ejecución semanal (lunes)
   push:
     paths:
       - "caply/package-lock.json"
