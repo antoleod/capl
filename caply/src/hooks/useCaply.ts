@@ -313,11 +313,12 @@ export function useCaply() {
       setJobId(nextJobId);
       setStep("Rendering video…");
       setProgress(50);
-    } catch (error: any) {
-      setUploadProgress(null); // Detenemos la animación si la subida falla (ej. 404)
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Export failed. Try lower quality or shorter duration.";
+      setUploadProgress(null);
       setPhase("error");
       setUploadProgress(null);
-      setErrorMsg(error?.response?.data?.error || error?.message || "Export failed. Try lower quality or shorter duration.");
+      setErrorMsg(message);
       setProgress(0);
     }
   }, [
@@ -369,6 +370,7 @@ export function useCaply() {
     photoInputRef,
     audioInputRef,
     photos,
+    videos,
     audio,
     duration,
     setDuration,
@@ -431,3 +433,4 @@ export function useCaply() {
     resetError,
   };
 }
+

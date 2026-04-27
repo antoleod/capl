@@ -3,7 +3,6 @@ import { AlertCircle, ChevronDown, Settings2, Upload, RefreshCw, Wand2, Download
 import { Background } from "./layout/Background";
 import { Header } from "./layout/Header";
 import { Footer } from "./layout/Footer";
-import { ActionBar } from "./layout/ActionBar";
 import { PreviewStage } from "./preview/PreviewStage";
 import { MediaInput } from "./MediaInput";
 import { AISummary } from "./summary/AISummary";
@@ -47,6 +46,7 @@ export default function CaplyApp() {
   };
 
   const controlsProps = {
+    audioInputRef: caply.audioInputRef,
     audio: caply.audio,
     removeAudio: caply.removeAudio,
     duration: caply.duration,
@@ -110,14 +110,13 @@ export default function CaplyApp() {
         )}
       </AnimatePresence>
 
-      <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 pb-28 pt-4 sm:px-6 lg:pb-10">
+      <div className="relative mx-auto flex min-h-screen w-full max-w-[1400px] flex-col px-4 pb-28 pt-4 sm:px-6 lg:px-8 lg:pb-10">
         <Header />
 
-        <section className="grid flex-1 gap-6 lg:grid-cols-[1fr_380px] lg:items-start">
+        <section className="grid flex-1 gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,1fr)] xl:items-start">
           <div className="space-y-6">
             <PreviewStage
               photos={caply.photos}
-              videos={caply.videos || []}
               audio={caply.audio}
               outputUrl={caply.outputUrl}
               phase={caply.phase}
@@ -130,7 +129,7 @@ export default function CaplyApp() {
               onResetError={caply.resetError}
             />
 
-            <div className="lg:hidden">
+            <div className="xl:hidden">
               <Card className="p-0 overflow-hidden">
                 <MediaInput
                   photos={caply.photos}
@@ -148,7 +147,7 @@ export default function CaplyApp() {
             </div>
 
             {(caply.photos.length > 0 || caply.videos?.length > 0) && (
-              <Card className="lg:hidden">
+              <Card className="xl:hidden">
                 <AISummary audio={caply.audio} durationLabel={caply.durationLabel} quality={caply.quality} />
               </Card>
             )}
@@ -157,7 +156,7 @@ export default function CaplyApp() {
               <button
                 type="button"
                 onClick={() => caply.setShowMobileSettings((value) => !value)}
-                className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/[0.05] p-4 text-sm lg:hidden"
+                className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/[0.05] p-4 text-sm xl:hidden"
               >
                 <span className="flex items-center gap-2">
                   <Settings2 className="h-4 w-4 text-cyan-300" />
@@ -173,7 +172,7 @@ export default function CaplyApp() {
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: "auto", opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  className="space-y-3 overflow-hidden lg:hidden"
+                  className="space-y-3 overflow-hidden xl:hidden"
                 >
                   <ControlPanel {...controlsProps} />
                 </motion.div>
@@ -181,7 +180,7 @@ export default function CaplyApp() {
             </AnimatePresence>
           </div>
 
-          <aside className="hidden space-y-4 lg:block">
+          <aside className="hidden space-y-4 xl:block">
             <Card className="p-0 overflow-hidden">
               <MediaInput
                 photos={caply.photos}
@@ -213,7 +212,7 @@ export default function CaplyApp() {
         </section>
 
         {/* Bottom Bar Unificada con Spinner */}
-        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#030712]/90 p-4 backdrop-blur-2xl lg:static lg:mt-6 lg:border-none lg:bg-transparent lg:p-0">
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#030712]/90 p-4 backdrop-blur-2xl xl:static xl:mt-6 xl:border-none xl:bg-transparent xl:p-0">
           <div className="mx-auto flex max-w-6xl gap-3">
             {caply.generated ? (
               <button 
@@ -241,7 +240,7 @@ export default function CaplyApp() {
               type="button"
               onClick={() => caply.setShowMobileSettings((v) => !v)}
               className={cn(
-                "grid h-14 w-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] lg:hidden transition-colors",
+                "grid h-14 w-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] xl:hidden transition-colors",
                 caply.showMobileSettings && "bg-cyan-300/20 border-cyan-300/30"
               )}
               aria-label="Open settings"
@@ -258,7 +257,7 @@ export default function CaplyApp() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed bottom-24 left-4 right-4 z-[60] mx-auto max-w-sm rounded-2xl border border-red-500/30 bg-[#0f0505] p-4 shadow-2xl backdrop-blur-xl lg:bottom-6"
+              className="fixed bottom-24 left-4 right-4 z-[60] mx-auto max-w-sm rounded-2xl border border-red-500/30 bg-[#0f0505] p-4 shadow-2xl backdrop-blur-xl xl:bottom-6"
             >
               <div className="flex items-start gap-3">
                 <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-red-500/20 text-red-400">
@@ -266,8 +265,8 @@ export default function CaplyApp() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="text-sm font-bold text-white">{caply.errorMsg}</h4>
-                  <p className="mt-0.5 text-xs text-red-200/60 line-clamp-1">Status: {caply.error?.statusCode || 'Unknown'}</p>
-                  <p className="mt-1 break-all font-mono text-[9px] text-red-400/50">{caply.errorUrl || 'Unknown Endpoint'}</p>
+                  <p className="mt-0.5 text-xs text-red-200/60 line-clamp-1">Please review server logs and try again.</p>
+                  <p className="mt-1 break-all font-mono text-[9px] text-red-400/50">{caply.step || "No additional details"}</p>
                 </div>
                 <button onClick={caply.resetError} className="text-white/20 hover:text-white"><X className="h-4 w-4" /></button>
               </div>

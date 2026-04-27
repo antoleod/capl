@@ -1,5 +1,6 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { AlertCircle, Clock, Music, Repeat, Scissors, Settings2, Sparkles, Volume2 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { CustomUnit, MediaAudio } from "../../types/caply";
 import { ASPECT_OPTIONS, DURATION_OPTIONS, QUALITY_OPTIONS, STYLE_OPTIONS, TRANSITION_OPTIONS } from "../../config/options";
 import { Section } from "../ui/Section";
@@ -243,7 +244,7 @@ function RangeField({
   value,
   onChange,
 }: {
-  icon?: any;
+  icon?: LucideIcon;
   label: string;
   min: number;
   max: number;

@@ -1,11 +1,14 @@
 import React, { useRef } from "react";
-import { Upload, Music, Video, X, RefreshCw, CheckCircle2 } from "lucide-react";
+import { Upload, Music, X, RefreshCw, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import type { MediaAudio, MediaPhoto } from "../types/caply";
+
+type MediaVideo = MediaPhoto;
 
 interface MediaInputProps {
-  photos: any[];
-  videos: any[];
-  audio: any | null;
+  photos: MediaPhoto[];
+  videos: MediaVideo[];
+  audio: MediaAudio | null;
   onFilesAdd: (files: FileList | null) => void;
   uploadProgress: number | null; // Nueva prop
   isUploadSuccess?: boolean; // New prop for success state
