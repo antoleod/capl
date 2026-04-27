@@ -9,6 +9,10 @@ const generateId = () => {
   return Math.random().toString(36).substring(2, 11);
 };
 
+// Opciones para botones segmentados (Regla 5)
+export const STYLE_OPTIONS = ["Auto", "Cinematic", "Modern", "Vintage", "Minimal"];
+export const ASPECT_OPTIONS = ["9:16", "16:9", "1:1"];
+
 export function useCaply() {
   const photoInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
@@ -39,6 +43,7 @@ export function useCaply() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [progress, setProgress] = useState(0); // Progreso del renderizado
   const [isUploadSuccess, setIsUploadSuccess] = useState(false);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [step, setStep] = useState("");
   const [jobId, setJobId] = useState<string | null>(null);
   const [outputUrl, setOutputUrl] = useState<string | null>(null);
@@ -50,6 +55,18 @@ export function useCaply() {
     () => parseDuration(duration, customDuration, customUnit),
     [duration, customDuration, customUnit]
   );
+
+  const advancedSummary = useMemo(
+    () => `${quality} • ${fps}fps • ${bitrate}`,
+    [quality, fps, bitrate]
+  );
+
+  const allMedia = useMemo(() => {
+    return [...photos, ...videos];
+  }, [photos, videos]);
+
+  const hasAudio = useMemo(() => !!audio, [audio]);
+  const mediaCount = allMedia.length;
 
   const totalSeconds = useMemo(() => durationToSeconds(durationLabel), [durationLabel]);
   const hasLongVideo = totalSeconds >= 600;
@@ -69,6 +86,7 @@ export function useCaply() {
         name: file.name,
         size: file.size,
         url: URL.createObjectURL(file),
+        type: 'image',
       }));
 
     // Procesar Videos
@@ -80,6 +98,7 @@ export function useCaply() {
         name: file.name,
         size: file.size,
         url: URL.createObjectURL(file),
+        type: 'video',
       }));
 
     // Procesar Audio (solo el primero encontrado)
@@ -111,6 +130,7 @@ export function useCaply() {
         name: file.name,
         size: file.size,
         url: URL.createObjectURL(file),
+        type: 'image',
       }));
 
     if (!items.length) return;
@@ -381,10 +401,16 @@ export function useCaply() {
     outputUrl,
     errorMsg,
     showMobileSettings,
+    showAdvancedSettings,
     setShowMobileSettings,
+    setShowAdvancedSettings,
     durationLabel,
+    advancedSummary,
     hasLongVideo,
     generated,
+    allMedia,
+    hasAudio,
+    mediaCount,
     handlePhotos,
     onFilesAdd,
     handleAudio,

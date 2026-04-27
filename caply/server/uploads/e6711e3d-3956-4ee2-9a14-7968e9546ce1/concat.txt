@@ -1,0 +1,12 @@
+file 'C:\Users\X1\Documents\capl\caply\server\uploads\136f7122-d563-4562-809a-345c26cf2107.png'
+duration 6.000
+file 'C:\Users\X1\Documents\capl\caply\server\uploads\17a97e55-1a2d-4228-a37c-999968e430a3.png'
+duration 6.000
+file 'C:\Users\X1\Documents\capl\caply\server\uploads\771803fe-eb32-4d25-9da7-e4ba9a73425c.png'
+duration 6.000
+file 'C:\Users\X1\Documents\capl\caply\server\uploads\a3df5659-bc7f-44f6-898c-8f28c36a7142.png'
+duration 6.000
+file 'C:\Users\X1\Documents\capl\caply\server\uploads\db25f90b-e62c-46b1-b17b-bf40a9f2d30b.png'
+duration 6.000
+file 'C:\Users\X1\Documents\capl\caply\server\uploads\db25f90b-e62c-46b1-b17b-bf40a9f2d30b.png'
+duration 6.000
