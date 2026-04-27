@@ -5,11 +5,26 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/upload': 'http://localhost:3001',
-      '/render': 'http://localhost:3001',
-      '/status': 'http://localhost:3001',
-      '/job': 'http://localhost:3001',
-      '/outputs': 'http://localhost:3001'
+      '/upload': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/render': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/status': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/job': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/outputs': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      }
     }
   }
 })

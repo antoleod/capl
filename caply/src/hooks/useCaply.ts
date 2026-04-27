@@ -3,11 +3,18 @@ import { API_BASE, downloadBlob, getStatus, startRender, uploadAudio, uploadPhot
 import type { CustomUnit, MediaAudio, MediaPhoto, Phase } from "../types/caply";
 import { durationToSeconds, parseDuration } from "../utils/format";
 
+// Fallback para entornos sin HTTPS o navegadores antiguos
+const generateId = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return Math.random().toString(36).substring(2, 11);
+};
+
 export function useCaply() {
   const photoInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
 
   const [photos, setPhotos] = useState<MediaPhoto[]>([]);
+  const [videos, setVideos] = useState<MediaPhoto[]>([]);
   const [audio, setAudio] = useState<MediaAudio | null>(null);
 
   const [duration, setDuration] = useState("30s");
@@ -29,7 +36,9 @@ export function useCaply() {
   const [audioVolume, setAudioVolume] = useState(1);
 
   const [phase, setPhase] = useState<Phase>("empty");
-  const [progress, setProgress] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [progress, setProgress] = useState(0); // Progreso del renderizado
+  const [isUploadSuccess, setIsUploadSuccess] = useState(false);
   const [step, setStep] = useState("");
   const [jobId, setJobId] = useState<string | null>(null);
   const [outputUrl, setOutputUrl] = useState<string | null>(null);
@@ -46,11 +55,58 @@ export function useCaply() {
   const hasLongVideo = totalSeconds >= 600;
   const generated = phase === "generated";
 
+  const onFilesAdd = useCallback((files: FileList | null) => {
+    if (!files) return;
+    console.log("Adding files:", files.length); // Debug log
+    const filesArray = Array.from(files);
+
+    // Procesar Fotos
+    const newPhotos = filesArray
+      .filter((file) => file.type.startsWith("image/"))
+      .map((file) => ({
+        id: generateId(),
+        file,
+        name: file.name,
+        size: file.size,
+        url: URL.createObjectURL(file),
+      }));
+
+    // Procesar Videos
+    const newVideos = filesArray
+      .filter((file) => file.type.startsWith("video/"))
+      .map((file) => ({
+        id: generateId(),
+        file,
+        name: file.name,
+        size: file.size,
+        url: URL.createObjectURL(file),
+      }));
+
+    // Procesar Audio (solo el primero encontrado)
+    const audioFile = filesArray.find((item) => item.type.startsWith("audio/"));
+
+    if (newPhotos.length) setPhotos((prev) => [...prev, ...newPhotos]);
+    if (newVideos.length) setVideos((prev) => [...prev, ...newVideos]);
+    if (audioFile) {
+      setAudio({
+        file: audioFile,
+        name: audioFile.name,
+        size: audioFile.size,
+        url: URL.createObjectURL(audioFile),
+      });
+      setAudioTrimEnd(undefined);
+    }
+
+    if (newPhotos.length || newVideos.length || photos.length > 0 || videos.length > 0) {
+      setPhase("ready");
+    }
+  }, [photos.length, videos.length]);
+
   const handlePhotos = useCallback((files: FileList | null) => {
     const items = Array.from(files || [])
       .filter((file) => file.type.startsWith("image/"))
       .map((file) => ({
-        id: crypto.randomUUID(),
+        id: generateId(),
         file,
         name: file.name,
         size: file.size,
@@ -93,7 +149,27 @@ export function useCaply() {
     });
   }, []);
 
+  const removeVideo = useCallback((id: string) => {
+    setVideos((previous) => {
+      const next = previous.filter((video) => video.id !== id);
+      if (!next.length && !photos.length) {
+        setPhase("empty");
+        setOutputUrl(null);
+        setJobId(null);
+        setProgress(0);
+      }
+      return next;
+    });
+  }, [photos.length]);
+
   const removeAudio = useCallback(() => setAudio(null), []);
+
+  const cancelUpload = useCallback(() => {
+    setUploadProgress(null);
+    setPhase("ready");
+    setStep("");
+    setIsUploadSuccess(false);
+  }, []);
 
   const pollStatus = useCallback(async (id: string) => {
     if (!id || id.length < 10) {
@@ -156,26 +232,30 @@ export function useCaply() {
     setOutputUrl(null);
     setJobId(null);
     setRetryCount(0);
+    setIsUploadSuccess(false);
 
     try {
       setPhase("rendering");
       setStep("Uploading photos…");
-      setProgress(5);
+      setUploadProgress(5);
 
       const sessionId = crypto.randomUUID();
+      const allMediaFiles = [...photos.map(p => p.file), ...videos.map(v => v.file)];
       const imagePaths = await uploadPhotos(
-        photos.map((photo) => photo.file),
+        allMediaFiles,
         sessionId,
-        setProgress
+        setUploadProgress
       );
 
       let audioPath: string | null = null;
 
       if (audio) {
         setStep("Uploading audio…");
-        audioPath = await uploadAudio(audio.file, sessionId, (pct) => setProgress(30 + pct));
+        audioPath = await uploadAudio(audio.file, sessionId, (pct) => setUploadProgress(pct));
       }
 
+      setIsUploadSuccess(true);
+      setUploadProgress(null);
       setStep("Starting render engine…");
       setProgress(45);
 
@@ -207,12 +287,15 @@ export function useCaply() {
       setStep("Rendering video…");
       setProgress(50);
     } catch (error: any) {
+      setUploadProgress(null); // Detenemos la animación si la subida falla (ej. 404)
       setPhase("error");
+      setUploadProgress(null);
       setErrorMsg(error?.response?.data?.error || error?.message || "Export failed. Try lower quality or shorter duration.");
       setProgress(0);
     }
   }, [
     photos,
+    videos,
     audio,
     durationLabel,
     style,
@@ -291,6 +374,8 @@ export function useCaply() {
     audioVolume,
     setAudioVolume,
     phase,
+    uploadProgress,
+    isUploadSuccess,
     progress,
     step,
     outputUrl,
@@ -301,9 +386,12 @@ export function useCaply() {
     hasLongVideo,
     generated,
     handlePhotos,
+    onFilesAdd,
     handleAudio,
     removePhoto,
+    removeVideo,
     removeAudio,
+    cancelUpload,
     generate,
     handleExport,
     resetError,

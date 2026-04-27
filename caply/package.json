@@ -4,14 +4,16 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev:frontend": "vite",
+    "dev:backend": "node server/server.js",
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@openai/openai": "npm:@jsr/openai__openai@^6.34.0",
-    "axios": "^1.7.9",
+    "axios": "^1.15.2",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "ffmpeg-static": "^5.3.0",

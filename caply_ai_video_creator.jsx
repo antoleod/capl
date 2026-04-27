@@ -1,5 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import axios from "axios"; // Import axios
+import { MediaInput } from "./MediaInput"; // Corregida la ruta de importación
 import {
   Upload,
   Music,
@@ -17,7 +19,7 @@ import {
   X,
   ChevronDown,
   RefreshCw,
-} from "lucide-react";
+} from "lucide-react"; // Assuming lucide-react is used for icons
 
 const styles = ["Auto", "Smooth", "Dynamic", "Emotional", "Cinematic", "Minimal"];
 const aspects = ["9:16", "16:9", "1:1", "4:5"];
@@ -111,9 +113,8 @@ function Section({ icon: Icon, title, children, defaultOpen = false }) {
 }
 
 export default function CaplyApp() {
-  const photoInputRef = useRef(null);
-  const audioInputRef = useRef(null);
   const [photos, setPhotos] = useState([]);
+  const [videos, setVideos] = useState([]);
   const [audio, setAudio] = useState(null);
   const [duration, setDuration] = useState("30s");
   const [customDuration, setCustomDuration] = useState(1);
@@ -125,63 +126,164 @@ export default function CaplyApp() {
   const [progress, setProgress] = useState(0);
   const [step, setStep] = useState("");
   const [generated, setGenerated] = useState(false);
+  const [showMobileSettings, setShowMobileSettings] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null); // Nuevo estado para el progreso
+  const [isUploadSuccess, setIsUploadSuccess] = useState(false); // Estado para éxito visual
+  const [error, setError] = useState(null); // { message: string, url: string }
+  const abortControllerRef = useRef(null); // Ref para el controlador de cancelación
 
   const durationLabel = parseDuration(duration, customDuration, customUnit);
   const estimate = useMemo(
-    () => estimateExport({ imageCount: photos.length, quality, durationLabel }),
-    [photos.length, quality, durationLabel]
+    () => estimateExport({ imageCount: photos.length + videos.length, quality, durationLabel }),
+    [photos.length, videos.length, quality, durationLabel]
   );
 
   const hasLongVideo = durationLabel.includes("h") || durationLabel.includes("30m") || durationLabel.includes("10m");
 
-  const handlePhotos = (files) => {
-    const items = Array.from(files || [])
-      .filter((file) => file.type.startsWith("image/"))
-      .map((file) => ({
-        id: crypto.randomUUID(),
-        file,
-        name: file.name,
-        size: file.size,
-        url: URL.createObjectURL(file),
-      }));
-    setPhotos((prev) => [...prev, ...items]);
-    if (items.length) setPhase("ready");
+  const handleFiles = async (newFiles) => {
+    const newPhotos = [];
+    const newVideos = [];
+    let newAudioFile = null;
+    const formData = new FormData();
+
+    Array.from(newFiles || []).forEach((file) => {
+      if (file.type.startsWith("image/")) {
+        newPhotos.push({ id: crypto.randomUUID(), file, name: file.name, size: file.size, url: URL.createObjectURL(file) });
+        formData.append('files', file); // Append photos to FormData
+      } else if (file.type.startsWith("video/")) {
+        newVideos.push({ id: crypto.randomUUID(), file, name: file.name, size: file.size, url: URL.createObjectURL(file) });
+        formData.append('files', file); // Append videos to FormData
+      } else if (file.type.startsWith("audio/")) {
+        newAudioFile = { file, name: file.name, url: URL.createObjectURL(file) };
+        formData.append('audio', file); // Append audio to FormData
+      }
+    });
+
+    if (formData.has('files') || formData.has('audio')) {
+      try {
+        // Cancelar cualquier subida previa si existe
+        if (abortControllerRef.current) abortControllerRef.current.abort();
+        abortControllerRef.current = new AbortController();
+
+        setUploadProgress(0); // Iniciar barra en 0
+        // Send files to the backend
+        const response = await axios.post('/upload/photos', formData, {
+          signal: abortControllerRef.current.signal,
+          timeout: 90000, // 90 seconds timeout for large files
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          },
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round(
+              (progressEvent.loaded * 100) / progressEvent.total
+            );
+            setUploadProgress(percentCompleted);
+          },
+        });
+        
+        setIsUploadSuccess(true);
+        setUploadProgress(100);
+
+        setTimeout(() => {
+          setUploadProgress(null);
+          setIsUploadSuccess(false);
+        }, 2000);
+
+        // Update frontend state after successful upload
+        if (newPhotos.length > 0) setPhotos((prev) => [...prev, ...newPhotos]);
+        if (newVideos.length > 0) setVideos((prev) => [...prev, ...newVideos]);
+        if (newAudioFile) setAudio(newAudioFile);
+        setPhase("ready");
+
+      } catch (err) {
+        if (axios.isCancel(err)) {
+          console.log('Upload cancelled');
+        } else {
+          console.error('Error uploading files:', err);
+          setError({ message: "Failed to upload files", url: err.request?.responseURL || 'Unknown' });
+        }
+        setUploadProgress(null);
+        setPhase("empty"); // Revert phase if upload fails
+      }
+    }
   };
 
-  const handleAudio = (files) => {
-    const file = Array.from(files || []).find((item) => item.type.startsWith("audio/"));
-    if (file) setAudio({ file, name: file.name, url: URL.createObjectURL(file) });
+  const cancelUpload = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setUploadProgress(null);
+      setPhase("empty");
+    }
   };
 
   const generate = async () => {
-    if (!photos.length) return;
+    if (!photos.length && !videos.length) return;
+    setError(null);
     setGenerated(false);
     setPhase("rendering");
-    const steps = [
-      "Reading media…",
-      "Analyzing photos…",
-      "Building story…",
-      "Syncing audio…",
-      "Rendering preview…",
-      "Preparing export…",
-    ];
 
-    for (let i = 0; i < steps.length; i++) {
-      setStep(steps[i]);
-      setProgress(Math.round(((i + 1) / steps.length) * 100));
-      await new Promise((resolve) => setTimeout(resolve, 420));
+    try {
+      const apiUrl = "/render"; // Use your backend render endpoint via proxy
+      
+      // Simulate sending data to the backend for rendering
+      // In a real app, you'd send photo/video IDs, duration, style, etc.
+      const renderPayload = {
+        photoIds: photos.map(p => p.id),
+        videoIds: videos.map(v => v.id),
+        audioId: audio ? audio.id : null,
+        duration, style, aspect, quality
+      };
+
+      // Make an actual API call to your backend's /render endpoint
+      const response = await axios.post(apiUrl, renderPayload, {
+        timeout: 300000 // 5 minutes timeout for rendering
+      });
+
+      console.log('Render request sent. Backend response:', response.data);
+
+      const steps = ["Reading media…", "Analyzing photos…", "Building story…", "Syncing audio…", "Rendering preview…", "Preparing export…"];
+      for (let i = 0; i < steps.length; i++) {
+        setStep(steps[i]);
+        setProgress(Math.round(((i + 1) / steps.length) * 100));
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      }
+
+      setGenerated(true);
+      setPhase("generated");
+    } catch (err) {
+      setPhase("ready");
+      setError({
+        message: err.response?.status === 404 ? "API endpoint not found (404)" : "Generation failed",
+        url: err.config?.url || 'Unknown API URL',
+        details: err.response?.data?.message || err.message
+      });
     }
-
-    setGenerated(true);
-    setPhase("generated");
   };
 
   const removePhoto = (id) => {
-    setPhotos((prev) => prev.filter((p) => p.id !== id));
-    if (photos.length <= 1) {
-      setPhase("empty");
-      setGenerated(false);
-    }
+    setPhotos((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      if (next.length === 0 && videos.length === 0) {
+        setPhase("empty");
+        setGenerated(false);
+      }
+      return next;
+    });
+  };
+
+  const removeVideo = (id) => {
+    setVideos((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      if (next.length === 0 && photos.length === 0) {
+        setPhase("empty");
+        setGenerated(false);
+      }
+      return next;
+    });
+  };
+
+  const removeAudio = () => {
+    setAudio(null);
   };
 
   return (
@@ -223,6 +325,14 @@ export default function CaplyApp() {
                     animate={{ scale: [1.08, 1.16, 1.1] }}
                     transition={{ duration: 10, repeat: Infinity, repeatType: "mirror" }}
                   />
+                ) : videos[0] ? (
+                   <video 
+                    key={videos[0].id}
+                    src={videos[0].url} 
+                    className="h-full w-full object-cover opacity-80"
+                    style={{ filter: "brightness(0.8)" }}
+                    autoPlay muted loop 
+                   />
                 ) : (
                   <div className="absolute inset-0 grid place-items-center p-6 text-center">
                     <motion.div
@@ -263,113 +373,149 @@ export default function CaplyApp() {
               </div>
             </Card>
 
-            <Card className="lg:hidden">
-              <UploadBlock photoInputRef={photoInputRef} handlePhotos={handlePhotos} photos={photos} removePhoto={removePhoto} />
-            </Card>
-
-            {photos.length > 0 && (
-              <Card className="lg:hidden">
-                <AISummary audio={audio} durationLabel={durationLabel} quality={quality} />
+            <div className="lg:hidden">
+              <Card className="p-0 overflow-hidden mb-5">
+                <MediaInput
+                  photos={photos}
+                  videos={videos}
+                  audio={audio}
+                  onFilesAdd={handleFiles}
+                  uploadProgress={uploadProgress} // Pasar progreso a la UI
+                  isUploadSuccess={isUploadSuccess}
+                  onCancelUpload={cancelUpload} // Pasar función de cancelación
+                  onPhotoRemove={removePhoto}
+                  onVideoRemove={removeVideo}
+                  onAudioRemove={removeAudio}
+                />
               </Card>
-            )}
+              {(photos.length > 0 || videos.length > 0) && (
+                <div className="space-y-4">
+                  <AISummary audio={audio} durationLabel={durationLabel} quality={quality} />
+                  <AnimatePresence>
+                    {showMobileSettings && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <Controls
+                          audio={audio}
+                          duration={duration}
+                          setDuration={setDuration}
+                          customDuration={customDuration}
+                          setCustomDuration={setCustomDuration}
+                          customUnit={customUnit}
+                          setCustomUnit={setCustomUnit}
+                          style={style}
+                          setStyle={setStyle}
+                          aspect={aspect}
+                          setAspect={setAspect}
+                          quality={quality}
+                          setQuality={setQuality}
+                          estimate={estimate}
+                          hasLongVideo={hasLongVideo}
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+            </div>
           </div>
 
           <aside className="hidden space-y-4 lg:block">
-            <Card>
-              <UploadBlock photoInputRef={photoInputRef} handlePhotos={handlePhotos} photos={photos} removePhoto={removePhoto} />
+            <Card className="p-0 overflow-hidden">
+              <MediaInput
+                photos={photos}
+                videos={videos}
+                audio={audio}
+                onFilesAdd={handleFiles}
+                uploadProgress={uploadProgress} // Pasar progreso a la UI
+                isUploadSuccess={isUploadSuccess}
+                onCancelUpload={cancelUpload} // Pasar función de cancelación
+                onPhotoRemove={removePhoto}
+                onVideoRemove={removeVideo}
+                onAudioRemove={removeAudio}
+              />
             </Card>
-
-            {photos.length > 0 && <AISummary audio={audio} durationLabel={durationLabel} quality={quality} />}
-
-            <Controls
-              audioInputRef={audioInputRef}
-              handleAudio={handleAudio}
-              audio={audio}
-              duration={duration}
-              setDuration={setDuration}
-              customDuration={customDuration}
-              setCustomDuration={setCustomDuration}
-              customUnit={customUnit}
-              setCustomUnit={setCustomUnit}
-              style={style}
-              setStyle={setStyle}
-              aspect={aspect}
-              setAspect={setAspect}
-              quality={quality}
-              setQuality={setQuality}
-              estimate={estimate}
-              hasLongVideo={hasLongVideo}
-            />
+          {/* Resumen y Controles unificados en la barra lateral */}
+          {(photos.length > 0 || videos.length > 0) && (
+            <div className="mt-4 space-y-4">
+              <AISummary audio={audio} durationLabel={durationLabel} quality={quality} />
+              <Controls
+                audio={audio}
+                duration={duration}
+                setDuration={setDuration}
+                customDuration={customDuration}
+                setCustomDuration={setCustomDuration}
+                customUnit={customUnit}
+                setCustomUnit={setCustomUnit}
+                style={style}
+                setStyle={setStyle}
+                aspect={aspect}
+                setAspect={setAspect}
+                quality={quality}
+                setQuality={setQuality}
+                estimate={estimate}
+                hasLongVideo={hasLongVideo}
+              />
+            </div>
+          )}
           </aside>
         </section>
 
-        <div className="mt-5 hidden lg:block">
-          <Controls
-            compact
-            audioInputRef={audioInputRef}
-            handleAudio={handleAudio}
-            audio={audio}
-            duration={duration}
-            setDuration={setDuration}
-            customDuration={customDuration}
-            setCustomDuration={setCustomDuration}
-            customUnit={customUnit}
-            setCustomUnit={setCustomUnit}
-            style={style}
-            setStyle={setStyle}
-            aspect={aspect}
-            setAspect={setAspect}
-            quality={quality}
-            setQuality={setQuality}
-            estimate={estimate}
-            hasLongVideo={hasLongVideo}
-          />
-        </div>
-
-        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#030712]/85 p-4 backdrop-blur-xl lg:static lg:mt-6 lg:border-none lg:bg-transparent lg:p-0">
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#030712]/90 p-4 backdrop-blur-2xl lg:static lg:mt-6 lg:border-none lg:bg-transparent lg:p-0">
           <div className="mx-auto flex max-w-6xl gap-3">
             {generated ? (
-              <button className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-white text-slate-950 font-black shadow-xl transition active:scale-[0.98]">
+              <button type="button" className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-white text-slate-950 font-black shadow-xl transition active:scale-[0.98]">
                 <Download className="h-5 w-5" /> Export Video
               </button>
             ) : (
               <button
-                disabled={!photos.length || phase === "rendering"}
+                type="button"
+                disabled={(!photos.length && !videos.length) || phase === "rendering"}
                 onClick={generate}
                 className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 to-violet-400 font-black text-slate-950 shadow-2xl shadow-cyan-400/20 transition hover:shadow-cyan-400/35 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <Wand2 className="h-5 w-5" /> Create Story
+                {phase === "rendering" ? (
+                  <RefreshCw className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Wand2 className="h-5 w-5" />
+                )}
+                {phase === "rendering" ? "Creating..." : "Create Story"}
               </button>
             )}
-            <button className="grid h-14 w-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] lg:hidden">
-              <Settings2 className="h-5 w-5" />
+            <button 
+              type="button"
+              onClick={() => setShowMobileSettings(!showMobileSettings)}
+              className="grid h-14 w-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] lg:hidden transition-colors"
+            >
+              <Settings2 className={`h-5 w-5 transition-transform ${showMobileSettings ? 'text-cyan-300 rotate-90' : 'text-white'}`} />
             </button>
           </div>
         </div>
 
-        <div className="mt-6 space-y-3 lg:hidden">
-          {photos.length > 0 && (
-            <Controls
-              audioInputRef={audioInputRef}
-              handleAudio={handleAudio}
-              audio={audio}
-              duration={duration}
-              setDuration={setDuration}
-              customDuration={customDuration}
-              setCustomDuration={setCustomDuration}
-              customUnit={customUnit}
-              setCustomUnit={setCustomUnit}
-              style={style}
-              setStyle={setStyle}
-              aspect={aspect}
-              setAspect={setAspect}
-              quality={quality}
-              setQuality={setQuality}
-              estimate={estimate}
-              hasLongVideo={hasLongVideo}
-            />
+        {/* Toast de Error */}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: 50, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="fixed bottom-24 left-4 right-4 z-50 mx-auto max-w-md rounded-2xl border border-red-500/20 bg-red-500/10 p-4 shadow-2xl backdrop-blur-xl lg:bottom-10"
+            >
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 shrink-0 text-red-400" />
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-white">{error.message}</p>
+                  <p className="mt-1 break-all font-mono text-[10px] text-red-300/70">{error.url}</p>
+                </div>
+                <button onClick={() => setError(null)} className="text-white/40 hover:text-white"><X className="h-4 w-4" /></button>
+              </div>
+            </motion.div>
           )}
-        </div>
+        </AnimatePresence>
 
         <footer className="relative mt-10 hidden items-center justify-between border-t border-white/10 py-5 text-xs text-slate-500 lg:flex">
           <p>Made with Caply AI · v0.1</p>
@@ -381,50 +527,7 @@ export default function CaplyApp() {
         </footer>
       </div>
 
-      <input ref={photoInputRef} type="file" multiple accept="image/*" className="hidden" onChange={(e) => handlePhotos(e.target.files)} />
-      <input ref={audioInputRef} type="file" accept="audio/*" className="hidden" onChange={(e) => handleAudio(e.target.files)} />
     </main>
-  );
-}
-
-function UploadBlock({ photoInputRef, handlePhotos, photos, removePhoto }) {
-  return (
-    <div>
-      <button
-        onClick={() => photoInputRef.current?.click()}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          handlePhotos(e.dataTransfer.files);
-        }}
-        className="group flex w-full flex-col items-center justify-center rounded-3xl border border-dashed border-cyan-300/30 bg-cyan-300/[0.05] p-6 text-center transition hover:border-cyan-300/70 hover:bg-cyan-300/[0.08] active:scale-[0.99]"
-      >
-        <div className="mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-300/25">
-          <Upload className="h-5 w-5" />
-        </div>
-        <p className="font-black">Add Photos</p>
-        <p className="mt-1 text-xs text-slate-400">Drop images or tap to browse</p>
-      </button>
-
-      {photos.length > 0 && (
-        <div className="mt-4">
-          <div className="mb-2 flex items-center justify-between text-xs text-slate-400">
-            <span>{photos.length} photo{photos.length > 1 ? "s" : ""}</span>
-            <span>{formatBytes(photos.reduce((a, p) => a + p.size, 0))}</span>
-          </div>
-          <div className="grid grid-cols-5 gap-2">
-            {photos.slice(0, 10).map((photo) => (
-              <div key={photo.id} className="group relative aspect-square overflow-hidden rounded-2xl bg-white/10">
-                <img src={photo.url} alt={photo.name} className="h-full w-full object-cover" />
-                <button onClick={() => removePhoto(photo.id)} className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-black/60 opacity-0 transition group-hover:opacity-100">
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -445,8 +548,6 @@ function AISummary({ audio, durationLabel, quality }) {
 
 function Controls(props) {
   const {
-    audioInputRef,
-    handleAudio,
     audio,
     duration,
     setDuration,
@@ -467,13 +568,6 @@ function Controls(props) {
 
   const body = (
     <div className={cx("grid gap-3", compact && "lg:grid-cols-4")}> 
-      <Section icon={Music} title="Music" defaultOpen={!compact}>
-        <button onClick={() => audioInputRef.current?.click()} className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/[0.05] p-3 text-left text-sm transition hover:bg-white/[0.08]">
-          <span>{audio ? audio.name : "Auto music"}</span>
-          <span className="text-cyan-300">Change</span>
-        </button>
-      </Section>
-
       <Section icon={Clock} title="Duration" defaultOpen={!compact}>
         <div className="flex flex-wrap gap-2">
           {durations.map((item) => (

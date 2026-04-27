@@ -1,164 +1,175 @@
+// server.js
 import express from 'express';
-import cors from 'cors';
 import multer from 'multer';
-import { v4 as uuidv4 } from 'uuid';
-import { extname, join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
+import cors from 'cors';
+import path from 'path';
+import { v4 as uuidv4 } from 'uuid'; // Import uuid for unique filenames
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { renderVideo, jobStatus } from './renderer.js';
 import { UPLOAD_DIR, OUTPUT_DIR } from './constants.js';
-import { renderVideo, activeJobs, jobStatus } from './renderer.js';
-import { parseDurationToSeconds } from './utils.js';
-import { spawnSync } from 'child_process';
-import ffmpegStatic from 'ffmpeg-static';
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const port = 3001;
 
-// Verify FFmpeg is available
-const FFMPEG_PATH = ffmpegStatic || 'ffmpeg';
-const ffmpegCheck = spawnSync(FFMPEG_PATH, ['-version'], { stdio: 'pipe' });
-if (ffmpegCheck.error || ffmpegCheck.status !== 0) {
-  console.error('FFmpeg not found. Please install ffmpeg-static or ensure FFmpeg is in PATH.');
-  process.exit(1);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Ensure the uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
 }
-console.log('FFmpeg detected:', FFMPEG_PATH);
 
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use('/outputs', express.static(OUTPUT_DIR));
+// Almacenamiento temporal de trabajos de renderizado
+const jobs = new Map();
 
+// CORS middleware to allow requests from your frontend
+app.use(cors({
+  origin: true, // Allow requests from any origin during development
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Middleware to parse JSON bodies
+app.use(express.json());
+
+// Debugging middleware to log all requests
+app.use((req, res, next) => {
+  console.log(`[Backend] ${req.method} ${req.url}`);
+  next();
+});
+
+// Configure Multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const sid = req.headers['x-session-id'] || uuidv4();
-    const dir = join(UPLOAD_DIR, sid);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    cb(null, dir);
+    cb(null, uploadsDir); // Files will be saved in the 'uploads' directory
   },
   filename: (req, file, cb) => {
-    cb(null, `${uuidv4()}${extname(file.originalname)}`);
-  },
-});
-
-const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024 } });
-
-// Health check
-app.get('/health', (_req, res) => res.json({ ok: true, ffmpeg: true }));
-
-// Job status with error tracking
-app.get('/status/:jobId', (req, res) => {
-  const { jobId } = req.params;
-  const outputFile = join(OUTPUT_DIR, `${jobId}.mp4`);
-  if (existsSync(outputFile)) {
-    return res.json({ ok: true, status: 'done', url: `/outputs/${jobId}.mp4` });
-  }
-  const st = jobStatus.get(jobId);
-  if (st) {
-    if (st.status === 'error') {
-      return res.json({ ok: false, status: 'error', error: st.error || 'Render failed' });
-    }
-    return res.json({ ok: true, status: 'processing', progress: st.progress || 45 });
-  }
-  if (activeJobs.has(jobId)) {
-    return res.json({ ok: true, status: 'processing', progress: 45 });
-  }
-  res.json({ ok: true, status: 'unknown' });
-});
-
-// Upload photos (multipart)
-app.post('/upload/photos', upload.array('photos', 100), (req, res) => {
-  try {
-    const files = (req.files || []).map((f) => f.path);
-    res.json({ ok: true, files });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    // Generate a unique filename using uuid and keep the original extension
+    const uniqueSuffix = uuidv4();
+    const fileExtension = path.extname(file.originalname);
+    cb(null, `${uniqueSuffix}${fileExtension}`);
   }
 });
 
-// Upload audio (multipart)
-app.post('/upload/audio', upload.single('audio'), (req, res) => {
-  try {
-    res.json({ ok: true, file: req.file?.path });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 500 * 1024 * 1024 } // Límite de 500MB para archivos grandes
+}).fields([
+  { name: 'files', maxCount: 50 },
+  { name: 'audio', maxCount: 1 }
+]);
+
+// Route to handle file uploads
+app.post('/upload/photos', upload, (req, res) => {
+  const files = req.files?.['files'] || [];
+  const audio = req.files?.['audio'] || [];
+
+  if (files.length === 0 && audio.length === 0) {
+    return res.status(400).json({ message: 'No files uploaded.' });
   }
+
+  const uploadedFiles = [...files, ...audio].map(file => ({
+    filename: file.filename,
+    originalname: file.originalname,
+    mimetype: file.mimetype,
+    size: file.size,
+    path: `/uploads/${file.filename}` // URL path to access the file
+  }));
+
+  console.log('Files uploaded successfully:', uploadedFiles);
+  res.status(200).json({ message: 'Files uploaded successfully', files: uploadedFiles });
 });
 
-// Render endpoint
+app.use('/outputs', express.static(OUTPUT_DIR));
+
+// Ruta para iniciar el renderizado
 app.post('/render', async (req, res) => {
+  const jobId = uuidv4();
+  const config = req.body;
+
   try {
-    const jobId = uuidv4();
-    const {
-      imagePaths,
-      audioPath,
-      durationLabel,
-      style,
-      quality,
-      aspect,
-      audioSettings,
-      fps,
-      bitrate,
-      transition,
-    } = req.body;
+    // Reconstruir rutas absolutas para el renderizador
+    const imagePaths = (config.imagePaths || []).map(p => 
+      path.join(__dirname, p.replace(/^\//, ''))
+    );
+    const audioPath = config.audioPath ? path.join(__dirname, config.audioPath.replace(/^\//, '')) : null;
 
-    if (!imagePaths || imagePaths.length === 0) {
-      return res.status(400).json({ ok: false, error: 'No images provided.' });
-    }
-
-    const totalDuration = parseDurationToSeconds(durationLabel);
-    if (totalDuration <= 0) {
-      return res.status(400).json({ ok: false, error: 'Invalid duration.' });
-    }
-
-    const job = {
+    const jobConfig = {
+      ...config,
       id: jobId,
       imagePaths,
       audioPath,
-      durationLabel,
-      style,
-      quality,
-      aspect,
-      audioSettings,
-      targetFps: fps,
-      targetBitrate: bitrate,
-      transition,
     };
 
-    res.json({ ok: true, jobId, status: 'processing' });
+    // Crear un estado inicial para el trabajo
+    const jobState = {
+      id: jobId,
+      status: 'processing',
+      progress: 0,
+      config: config,
+      createdAt: Date.now()
+    };
+    jobs.set(jobId, jobState);
 
-    // Start render after response
-    jobStatus.set(jobId, { status: 'processing', progress: 0 });
-    setImmediate(async () => {
-      try {
-        const outputPath = await renderVideo(job);
-        jobStatus.set(jobId, { status: 'done', progress: 100 });
-        console.log(`[${jobId}] Done: ${outputPath}`);
-      } catch (err) {
-        console.error(`[${jobId}] Render failed:`, err.message);
-        jobStatus.set(jobId, { status: 'error', error: err.message || 'Render failed' });
+    console.log(`[Backend] Starting render for job ${jobId}`);
+
+    // Iniciar el renderizado en segundo plano
+    renderVideo(jobConfig)
+      .then((outputPath) => {
+        const job = jobs.get(jobId);
+        if (job) {
+          job.status = 'done';
+          job.progress = 100;
+          job.url = `/outputs/${path.basename(outputPath)}`;
+          jobs.set(jobId, job);
+          console.log(`[Backend] Render finished for job ${jobId}`);
+        }
+      })
+      .catch((error) => {
+        console.error(`[Backend] Render error for job ${jobId}:`, error);
+        const job = jobs.get(jobId);
+        if (job) {
+          job.status = 'error';
+          job.error = error.message || 'Render failed';
+          jobs.set(jobId, job);
+        }
+      });
+
+    // Actualizar el progreso desde el jobStatus del renderer
+    const progressInterval = setInterval(() => {
+      const job = jobs.get(jobId);
+      if (!job || job.status !== 'processing') {
+        clearInterval(progressInterval);
+        return;
       }
-    });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+      
+      const status = jobStatus.get(jobId);
+      if (status && typeof status.progress === 'number') {
+        job.progress = status.progress;
+        jobs.set(jobId, job);
+      }
+    }, 1000);
+
+    res.status(202).json({ jobId });
+  } catch (error) {
+    console.error('[Backend] Error in /render route:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
-
-// Cleanup job
-app.delete('/job/:jobId', async (req, res) => {
-  try {
-    const { jobId } = req.params;
-    const out = join(OUTPUT_DIR, `${jobId}.mp4`);
-    if (existsSync(out)) {
-      const { unlink } = await import('fs/promises');
-      await unlink(out);
-    }
-    const proc = activeJobs.get(jobId);
-    if (proc) proc.kill();
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
+// Ruta para consultar el estado
+app.get('/status/:id', (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) return res.status(404).json({ status: 'error', error: 'Job not found' });
+  res.json(job);
 });
 
-app.listen(PORT, () => {
-  console.log(`Caply server running on http://localhost:${PORT}`);
+// Serve static files from the 'uploads' directory
+app.use('/uploads', express.static(uploadsDir));
+
+// Start the server
+app.listen(port, () => {
+  console.log(`Backend server listening on http://localhost:${port}`);
 });

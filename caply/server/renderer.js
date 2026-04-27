@@ -69,6 +69,10 @@ export async function renderVideo(job) {
     '-f', 'concat', '-safe', '0', '-i', concatFile,
   ];
 
+  if (audioPath) {
+    args.push('-i', audioPath);
+  }
+
   // Build video filter
   let vFilter = `fps=${fps},scale=${resolution.width}:${resolution.height}:force_original_aspect_ratio=decrease,pad=${resolution.width}:${resolution.height}:(ow-iw)/2:(oh-ih)/2:black,format=yuv420p`;
 
@@ -87,7 +91,6 @@ export async function renderVideo(job) {
   args.push('-t', String(totalDuration));
 
   if (audioPath) {
-    args.push('-i', audioPath);
     const af = [];
     if (audioSettings?.trimStart !== undefined) af.push(`atrim=start=${audioSettings.trimStart}`);
     if (audioSettings?.trimEnd !== undefined) af.push(`atrim=end=${audioSettings.trimEnd}`);
