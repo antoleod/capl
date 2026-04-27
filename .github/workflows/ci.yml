@@ -17,10 +17,6 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    working-directory: caply
-
 jobs:
   quality:
     name: Lint and Build
@@ -30,12 +26,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Detect project directory
+        id: detect_dir
+        run: |
+          if [ -f "caply/package.json" ]; then
+            echo "dir=caply" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: caply/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            caply/package-lock.json
 
       - name: Show tool versions
         run: |
@@ -44,12 +51,15 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        working-directory: ${{ steps.detect_dir.outputs.dir }}
 
       - name: Run lint
         run: npm run lint --if-present
+        working-directory: ${{ steps.detect_dir.outputs.dir }}
 
       - name: Build project
         run: npm run build --if-present
+        working-directory: ${{ steps.detect_dir.outputs.dir }}
 
   test:
     name: Tests
@@ -77,12 +87,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Detect project directory
+        id: detect_dir
+        run: |
+          if [ -f "caply/package.json" ]; then
+            echo "dir=caply" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: caply/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            caply/package-lock.json
 
       - name: Show tool versions
         run: |
@@ -91,6 +112,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        working-directory: ${{ steps.detect_dir.outputs.dir }}
 
       - name: Run tests (if present)
         run: npm test --if-present
+        working-directory: ${{ steps.detect_dir.outputs.dir }}
