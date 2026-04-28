@@ -1,31 +1,31 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
-// https://vite.dev/config/
 export default defineConfig({
+  base: "/capl/",
   plugins: [react()],
   server: {
     proxy: {
-      '/upload': {
-        target: 'http://127.0.0.1:3001',
+      "/upload": {
+        target: "http://127.0.0.1:3001",
         changeOrigin: true,
       },
-      '/render': {
-        target: 'http://127.0.0.1:3001',
+      "/render": {
+        target: "http://127.0.0.1:3001",
         changeOrigin: true,
       },
-      '/status': {
-        target: 'http://127.0.0.1:3001',
+      "/status": {
+        target: "http://127.0.0.1:3001",
         changeOrigin: true,
       },
-      '/uploads': {
-        target: 'http://127.0.0.1:3001',
+      "/uploads": {
+        target: "http://127.0.0.1:3001",
         changeOrigin: true,
       },
-      '/outputs': {
-        target: 'http://127.0.0.1:3001',
+      "/outputs": {
+        target: "http://127.0.0.1:3001",
         changeOrigin: true,
       },
-    }
-  }
-})
+    },
+  },
+});
