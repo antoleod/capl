@@ -110,10 +110,10 @@ export default function CaplyApp() {
         )}
       </AnimatePresence>
 
-      <div className="relative mx-auto flex min-h-screen w-full max-w-[1400px] flex-col px-4 pb-28 pt-4 sm:px-6 lg:px-8 lg:pb-10">
+      <div className="relative mx-auto flex min-h-screen w-full max-w-[1800px] flex-col px-3 pb-24 pt-3 sm:px-5 lg:px-8 lg:pb-8">
         <Header />
 
-        <section className="grid flex-1 gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,1fr)] xl:items-start">
+        <section className="grid flex-1 gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(360px,1fr)] lg:items-start">
           <div className="space-y-6">
             <PreviewStage
               photos={caply.photos}
@@ -129,7 +129,7 @@ export default function CaplyApp() {
               onResetError={caply.resetError}
             />
 
-            <div className="xl:hidden">
+            <div className="lg:hidden">
               <Card className="p-0 overflow-hidden">
                 <MediaInput
                   photos={caply.photos}
@@ -147,7 +147,7 @@ export default function CaplyApp() {
             </div>
 
             {(caply.photos.length > 0 || caply.videos?.length > 0) && (
-              <Card className="xl:hidden">
+              <Card className="lg:hidden">
                 <AISummary audio={caply.audio} durationLabel={caply.durationLabel} quality={caply.quality} />
               </Card>
             )}
@@ -156,7 +156,7 @@ export default function CaplyApp() {
               <button
                 type="button"
                 onClick={() => caply.setShowMobileSettings((value) => !value)}
-                className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/[0.05] p-4 text-sm xl:hidden"
+                className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/[0.05] p-4 text-sm lg:hidden"
               >
                 <span className="flex items-center gap-2">
                   <Settings2 className="h-4 w-4 text-cyan-300" />
@@ -172,7 +172,7 @@ export default function CaplyApp() {
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: "auto", opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  className="space-y-3 overflow-hidden xl:hidden"
+                  className="space-y-3 overflow-hidden lg:hidden"
                 >
                   <ControlPanel {...controlsProps} />
                 </motion.div>
@@ -180,7 +180,7 @@ export default function CaplyApp() {
             </AnimatePresence>
           </div>
 
-          <aside className="hidden space-y-4 xl:block">
+          <aside className="hidden space-y-4 lg:block">
             <Card className="p-0 overflow-hidden">
               <MediaInput
                 photos={caply.photos}
@@ -212,8 +212,8 @@ export default function CaplyApp() {
         </section>
 
         {/* Bottom Bar Unificada con Spinner */}
-        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#030712]/90 p-4 backdrop-blur-2xl xl:static xl:mt-6 xl:border-none xl:bg-transparent xl:p-0">
-          <div className="mx-auto flex max-w-6xl gap-3">
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#030712]/90 p-3 backdrop-blur-2xl lg:static lg:mt-6 lg:border-none lg:bg-transparent lg:p-0">
+          <div className="mx-auto flex w-full max-w-7xl gap-3">
             {caply.generated ? (
               <button 
                 onClick={caply.handleExport}
@@ -240,7 +240,7 @@ export default function CaplyApp() {
               type="button"
               onClick={() => caply.setShowMobileSettings((v) => !v)}
               className={cn(
-                "grid h-14 w-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] xl:hidden transition-colors",
+                "grid h-14 w-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] lg:hidden transition-colors",
                 caply.showMobileSettings && "bg-cyan-300/20 border-cyan-300/30"
               )}
               aria-label="Open settings"
@@ -257,7 +257,7 @@ export default function CaplyApp() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed bottom-24 left-4 right-4 z-[60] mx-auto max-w-sm rounded-2xl border border-red-500/30 bg-[#0f0505] p-4 shadow-2xl backdrop-blur-xl xl:bottom-6"
+              className="fixed bottom-24 left-3 right-3 z-[60] mx-auto max-w-sm rounded-2xl border border-red-500/30 bg-[#0f0505] p-4 shadow-2xl backdrop-blur-xl lg:bottom-6"
             >
               <div className="flex items-start gap-3">
                 <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-red-500/20 text-red-400">
