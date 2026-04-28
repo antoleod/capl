@@ -11,7 +11,7 @@ import { UPLOAD_DIR, OUTPUT_DIR } from './constants.js';
 import cron from 'node-cron';
 
 const app = express();
-const port = 3001;
+const port = Number(process.env.PORT) || 3001;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
