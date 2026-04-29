@@ -1,16 +1,16 @@
 ﻿import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, Upload, RefreshCw, Wand2, Download, X, Music2 } from "lucide-react";
+import { AlertCircle, Upload, RefreshCw, Wand2, Download, X, Music2, Settings } from "lucide-react";
 import { Background } from "./layout/Background";
-import { Header } from "./layout/Header";
 import { Footer } from "./layout/Footer";
 import { MediaInput } from "./MediaInput";
 import { Timeline } from "./timeline/Timeline";
 import { Card } from "./ui/Card";
 import { useCaply, STYLE_OPTIONS } from "../hooks/useCaply";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export default function CaplyApp() {
   const caply = useCaply();
+  const [theme, setTheme] = useState<"light" | "dark" | "purple">("dark");
   const [isDragging, setIsDragging] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [mode, setMode] = useState<"tiktok" | "youtube" | "instagram">("tiktok");
@@ -21,6 +21,9 @@ export default function CaplyApp() {
   const [customDurationUnit, setCustomDurationUnit] = useState<"seconds" | "minutes" | "hours">("minutes");
   const [platformPreset, setPlatformPreset] = useState<"tiktok" | "youtube" | "instagram_1_1" | "instagram_9_16" | "custom">("tiktok");
   const [qualityPreset, setQualityPreset] = useState<"auto" | "720p" | "1080p" | "2k" | "4k" | "8k">("1080p");
+  const [exportMode, setExportMode] = useState<"preview" | "final">("final");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
 
   const durationByGoal: Record<"sleep" | "relax" | "short" | "story", string[]> = {
     sleep: ["30min", "1h", "2h", "Custom"],
@@ -62,12 +65,12 @@ export default function CaplyApp() {
   })();
 
   const mapQualityToEngine = (q: "auto" | "720p" | "1080p" | "2k" | "4k" | "8k") => {
-    if (q === "auto") return { quality: "1080p", bitrate: "8M", fps: 30 };
-    if (q === "720p") return { quality: "720p", bitrate: "4M", fps: 24 };
-    if (q === "1080p") return { quality: "1080p", bitrate: "8M", fps: 30 };
-    if (q === "2k") return { quality: "2K", bitrate: "12M", fps: 30 };
-    if (q === "4k") return { quality: "4K", bitrate: "16M", fps: 30 };
-    return { quality: "4K", bitrate: "24M", fps: 60 };
+    if (q === "auto") return { quality: "1080p", bitrate: "10M", fps: 30 };
+    if (q === "720p") return { quality: "720p", bitrate: "6M", fps: 30 };
+    if (q === "1080p") return { quality: "1080p", bitrate: "12M", fps: 30 };
+    if (q === "2k") return { quality: "2K", bitrate: "18M", fps: 30 };
+    if (q === "4k") return { quality: "4K", bitrate: "28M", fps: 30 };
+    return { quality: "4K", bitrate: "40M", fps: 60 };
   };
 
   const mapPlatformToMode = (p: "tiktok" | "youtube" | "instagram_1_1" | "instagram_9_16" | "custom"): "tiktok" | "youtube" | "instagram" => {
@@ -85,7 +88,9 @@ export default function CaplyApp() {
   const resolvedDurationLabel = isCustomDuration ? `${Math.max(3, Math.floor(customDurationSeconds))}${customDurationUnit === "hours" ? "h" : customDurationUnit === "minutes" ? "m" : "s"}` : durationPreset === "Auto" ? caply.durationLabel : durationPreset.replace("min", "m");
 
   const runAutoCreateWithSelections = () => {
-    const engine = mapQualityToEngine(qualityPreset);
+    const engine = exportMode === "preview"
+      ? { quality: "720p", bitrate: "4M", fps: 24 }
+      : mapQualityToEngine(qualityPreset);
     caply.setQuality(engine.quality);
     caply.setBitrate(engine.bitrate);
     caply.setFps(engine.fps);
@@ -109,6 +114,26 @@ export default function CaplyApp() {
   useEffect(() => {
     localStorage.setItem("caply_user_prefs", JSON.stringify({ videoGoal, durationPreset, platformPreset, qualityPreset }));
   }, [videoGoal, durationPreset, platformPreset, qualityPreset]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute("data-theme", theme);
+    localStorage.setItem("caply_theme", theme);
+  }, [theme]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("caply_theme");
+    if (saved === "light" || saved === "dark" || saved === "purple") setTheme(saved);
+  }, []);
+
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (!settingsRef.current) return;
+      if (!settingsRef.current.contains(e.target as Node)) setSettingsOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
 
   const visualMedia = useMemo(() => [...caply.photos, ...(caply.videos || [])], [caply.photos, caply.videos]);
   const activeVisual = visualMedia[previewIndex % Math.max(visualMedia.length, 1)];
@@ -144,7 +169,8 @@ export default function CaplyApp() {
 
   return (
     <main
-      className="min-h-screen overflow-x-hidden bg-[#030712] text-white"
+      className="min-h-screen overflow-x-hidden"
+      style={{ backgroundColor: "var(--bg)", color: "var(--text)" }}
       onDragOver={handleGlobalDrag}
       onDragEnter={handleGlobalDrag}
       onDragLeave={handleGlobalDrag}
@@ -170,23 +196,35 @@ export default function CaplyApp() {
       </AnimatePresence>
 
       <div className="relative mx-auto flex min-h-screen w-full max-w-[1800px] flex-col overflow-x-hidden px-3 pb-24 pt-3 sm:px-5 lg:px-8 lg:pb-8">
-        <Header />
-
-        <section className="mb-3">
-          <div className="inline-flex rounded-2xl border border-white/10 bg-white/[0.03] p-1">
-            <button
-              type="button"
-              onClick={() => setMode("tiktok")}
-              className={`rounded-xl px-3 py-1.5 text-[11px] font-semibold uppercase ${mode === "tiktok" ? "bg-cyan-300/20 text-cyan-100" : "text-slate-300"}`}
-            >
-              TikTok/Reels
+        <section className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <img src="/caply-logo.svg" alt="Caply logo" className="h-8 w-8 rounded-lg shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/favicon.svg"; }} />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-black">Caply</p>
+              <p className="truncate text-[11px] text-slate-400">Smart story creator</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2" ref={settingsRef}>
+            <span className="hidden sm:inline-flex rounded-full border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] uppercase text-slate-300">{mode}</span>
+            <button type="button" onClick={() => setSettingsOpen((v) => !v)} className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/[0.03]">
+              <Settings className="h-4 w-4" />
             </button>
-            <button type="button" onClick={() => setMode("youtube")} className={`rounded-xl px-3 py-1.5 text-[11px] font-semibold uppercase ${mode === "youtube" ? "bg-cyan-300/20 text-cyan-100" : "text-slate-300"}`}>
-              YouTube
-            </button>
-            <button type="button" onClick={() => setMode("instagram")} className={`rounded-xl px-3 py-1.5 text-[11px] font-semibold uppercase ${mode === "instagram" ? "bg-cyan-300/20 text-cyan-100" : "text-slate-300"}`}>
-              Instagram
-            </button>
+            {settingsOpen && (
+              <div className="absolute right-3 top-12 z-[90] w-[min(92vw,320px)] rounded-2xl border border-white/10 p-3 shadow-2xl" style={{ backgroundColor: "var(--panel)" }}>
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Theme</p>
+                <div className="mb-3 flex gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+                  <button onClick={() => { setTheme("light"); setSettingsOpen(false); }} className={`rounded-lg px-2 py-1 text-[10px] font-semibold ${theme === "light" ? "bg-white/20" : "text-slate-300"}`}>Light</button>
+                  <button onClick={() => { setTheme("dark"); setSettingsOpen(false); }} className={`rounded-lg px-2 py-1 text-[10px] font-semibold ${theme === "dark" ? "bg-white/20" : "text-slate-300"}`}>Dark</button>
+                  <button onClick={() => { setTheme("purple"); setSettingsOpen(false); }} className={`rounded-lg px-2 py-1 text-[10px] font-semibold ${theme === "purple" ? "bg-white/20" : "text-slate-300"}`}>Purple</button>
+                </div>
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Platform mode</p>
+                <div className="flex flex-wrap gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+                  <button onClick={() => { setMode("tiktok"); setSettingsOpen(false); }} className={`rounded-lg px-2 py-1 text-[10px] font-semibold ${mode === "tiktok" ? "bg-cyan-300/20 text-cyan-100" : "text-slate-300"}`}>TikTok/Reels</button>
+                  <button onClick={() => { setMode("youtube"); setSettingsOpen(false); }} className={`rounded-lg px-2 py-1 text-[10px] font-semibold ${mode === "youtube" ? "bg-cyan-300/20 text-cyan-100" : "text-slate-300"}`}>YouTube</button>
+                  <button onClick={() => { setMode("instagram"); setSettingsOpen(false); }} className={`rounded-lg px-2 py-1 text-[10px] font-semibold ${mode === "instagram" ? "bg-cyan-300/20 text-cyan-100" : "text-slate-300"}`}>Instagram</button>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
@@ -388,8 +426,24 @@ export default function CaplyApp() {
                 </button>
                 {openControl === "export" && (
                   <>
+                    <div className="mt-2 inline-flex rounded-xl border border-white/10 bg-white/[0.03] p-1">
+                      <button
+                        type="button"
+                        onClick={() => setExportMode("preview")}
+                        className={`rounded-lg px-3 py-1.5 text-[10px] font-semibold uppercase ${exportMode === "preview" ? "bg-cyan-300/20 text-cyan-100" : "text-slate-300"}`}
+                      >
+                        Preview
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExportMode("final")}
+                        className={`rounded-lg px-3 py-1.5 text-[10px] font-semibold uppercase ${exportMode === "final" ? "bg-cyan-300/20 text-cyan-100" : "text-slate-300"}`}
+                      >
+                        Final
+                      </button>
+                    </div>
                     <div className="mt-2 rounded-xl border border-white/10 bg-white/[0.03] p-2 text-[10px] text-slate-300">
-                      Quality check: {renderWeight.toUpperCase()} load. {isLongDuration ? "Long duration selected. " : ""}{isVeryHeavyDuration ? "High quality + long duration can be slow." : "Ready to render."}
+                      Quality check: {renderWeight.toUpperCase()} load. Mode: {exportMode.toUpperCase()}. {isLongDuration ? "Long duration selected. " : ""}{isVeryHeavyDuration ? "High quality + long duration can be slow." : "Ready to render."}
                     </div>
                     <button
                       type="button"
@@ -431,7 +485,7 @@ export default function CaplyApp() {
               className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 to-violet-400 font-black text-slate-950 shadow-2xl shadow-cyan-400/20 transition hover:shadow-cyan-400/35 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {caply.phase === "rendering" ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}
-              {caply.phase === "rendering" ? "Creating Story..." : "Create Story"}
+              {caply.phase === "rendering" ? "Creating Story..." : `Create Story (${exportMode === "preview" ? "Preview" : "Final"})`}
             </button>
           </div>
         </div>
