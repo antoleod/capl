@@ -1,22 +1,31 @@
-import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, ChevronDown, Settings2, Upload, RefreshCw, Wand2, Download, X } from "lucide-react";
+﻿import { AnimatePresence, motion } from "framer-motion";
+import { AlertCircle, Upload, RefreshCw, Wand2, Download, X, Music2 } from "lucide-react";
 import { Background } from "./layout/Background";
 import { Header } from "./layout/Header";
 import { Footer } from "./layout/Footer";
-import { PreviewStage } from "./preview/PreviewStage";
 import { MediaInput } from "./MediaInput";
-import { AISummary } from "./summary/AISummary";
-import { ControlPanel } from "./controls/ControlPanel";
+import { Timeline } from "./timeline/Timeline";
 import { Card } from "./ui/Card";
-import { useCaply } from "../hooks/useCaply";
-import { cn } from "../utils/cn";
-import { useState } from "react";
+import { useCaply, STYLE_OPTIONS } from "../hooks/useCaply";
+import { useEffect, useMemo, useState } from "react";
 
 export default function CaplyApp() {
   const caply = useCaply();
   const [isDragging, setIsDragging] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const [openControl, setOpenControl] = useState<"music" | "style" | "export">("music");
 
-  // Manejador Global de Drag and Drop
+  const visualMedia = useMemo(() => [...caply.photos, ...(caply.videos || [])], [caply.photos, caply.videos]);
+  const activeVisual = visualMedia[previewIndex % Math.max(visualMedia.length, 1)];
+
+  useEffect(() => {
+    if (visualMedia.length <= 1) return;
+    const id = window.setInterval(() => {
+      setPreviewIndex((v) => (v + 1) % visualMedia.length);
+    }, 2600);
+    return () => window.clearInterval(id);
+  }, [visualMedia.length]);
+
   const handleGlobalDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -31,59 +40,15 @@ export default function CaplyApp() {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
-    
+
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
-      handleFiles(files);
+      caply.onFilesAdd?.(files);
     }
   };
 
-  const handleFiles = (files: FileList | null) => {
-    if (!files) return;
-    // Centralizamos la lógica de archivos
-    // El hook useCaply debería tener una función única o filtrar aquí
-    caply.onFilesAdd?.(files); 
-  };
-
-  const controlsProps = {
-    audioInputRef: caply.audioInputRef,
-    audio: caply.audio,
-    removeAudio: caply.removeAudio,
-    duration: caply.duration,
-    setDuration: caply.setDuration,
-    customDuration: caply.customDuration,
-    setCustomDuration: caply.setCustomDuration,
-    customUnit: caply.customUnit,
-    setCustomUnit: caply.setCustomUnit,
-    style: caply.style,
-    setStyle: caply.setStyle,
-    aspect: caply.aspect,
-    setAspect: caply.setAspect,
-    quality: caply.quality,
-    setQuality: caply.setQuality,
-    fps: caply.fps,
-    setFps: caply.setFps,
-    bitrate: caply.bitrate,
-    setBitrate: caply.setBitrate,
-    transition: caply.transition,
-    setTransition: caply.setTransition,
-    hasLongVideo: caply.hasLongVideo,
-    audioTrimStart: caply.audioTrimStart,
-    setAudioTrimStart: caply.setAudioTrimStart,
-    audioTrimEnd: caply.audioTrimEnd,
-    setAudioTrimEnd: caply.setAudioTrimEnd,
-    audioLoop: caply.audioLoop,
-    setAudioLoop: caply.setAudioLoop,
-    audioFadeIn: caply.audioFadeIn,
-    setAudioFadeIn: caply.setAudioFadeIn,
-    audioFadeOut: caply.audioFadeOut,
-    setAudioFadeOut: caply.setAudioFadeOut,
-    audioVolume: caply.audioVolume,
-    setAudioVolume: caply.setAudioVolume,
-  };
-
   return (
-    <main 
+    <main
       className="min-h-screen overflow-x-hidden bg-[#030712] text-white"
       onDragOver={handleGlobalDrag}
       onDragEnter={handleGlobalDrag}
@@ -92,7 +57,6 @@ export default function CaplyApp() {
     >
       <Background />
 
-      {/* Overlay Global de Drag and Drop */}
       <AnimatePresence>
         {isDragging && (
           <motion.div
@@ -110,83 +74,55 @@ export default function CaplyApp() {
         )}
       </AnimatePresence>
 
-      <div className="relative mx-auto flex min-h-screen w-full max-w-[1800px] flex-col px-3 pb-24 pt-3 sm:px-5 lg:px-8 lg:pb-8">
+      <div className="relative mx-auto flex min-h-screen w-full max-w-[1800px] flex-col overflow-x-hidden px-3 pb-24 pt-3 sm:px-5 lg:px-8 lg:pb-8">
         <Header />
 
-        <section className="grid flex-1 gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(360px,1fr)] lg:items-start">
-          <div className="space-y-6">
-            <PreviewStage
+        <section className="grid flex-1 min-w-0 gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1.55fr)_320px] lg:items-start">
+          <div className="space-y-4">
+            <section className="rounded-3xl border border-white/10 bg-[#070d1b] p-3 shadow-[0_16px_60px_rgba(0,0,0,0.45)] sm:p-4">
+              <div className="relative mx-auto w-full max-w-[420px] overflow-hidden rounded-2xl border border-white/10 bg-black">
+                <div className="aspect-[9/16] w-full max-h-[45vh]">
+                  {activeVisual ? (
+                    <img
+                      key={activeVisual.id}
+                      src={activeVisual.url}
+                      alt={activeVisual.name}
+                      className="h-full w-full object-cover animate-[previewZoom_8s_ease-in-out_infinite]"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-sm text-slate-500">Add media to preview your story</div>
+                  )}
+                </div>
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+                {activeVisual && (
+                  <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-3">
+                    <p className="truncate text-xs font-semibold text-white/90">{activeVisual.name}</p>
+                    <span className="rounded-full border border-white/20 bg-black/40 px-2 py-1 text-[10px] uppercase text-slate-200">
+                      {caply.phase === "rendering" ? `Rendering ${Math.round(caply.progress)}%` : "Live preview"}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <Timeline
               photos={caply.photos}
+              videos={caply.videos || []}
               audio={caply.audio}
-              outputUrl={caply.outputUrl}
-              phase={caply.phase}
-              progress={caply.progress}
-              step={caply.step}
-              errorMsg={caply.errorMsg}
               durationLabel={caply.durationLabel}
-              quality={caply.quality}
-              aspect={caply.aspect}
-              onResetError={caply.resetError}
+              onPhotoRemove={caply.removePhoto}
+              onVideoRemove={caply.removeVideo}
+              onAudioRemove={caply.removeAudio}
             />
-
-            <div className="lg:hidden">
-              <Card className="p-0 overflow-hidden">
-                <MediaInput
-                  photos={caply.photos}
-                  videos={caply.videos || []} 
-                  audio={caply.audio}
-                  onFilesAdd={handleFiles}
-                  uploadProgress={caply.uploadProgress}
-                  isUploadSuccess={caply.isUploadSuccess}
-                  onCancelUpload={caply.cancelUpload}
-                  onPhotoRemove={caply.removePhoto}
-                  onAudioRemove={caply.removeAudio}
-                  onVideoRemove={caply.removeVideo}
-                />
-              </Card>
-            </div>
-
-            {(caply.photos.length > 0 || caply.videos?.length > 0) && (
-              <Card className="lg:hidden">
-                <AISummary audio={caply.audio} durationLabel={caply.durationLabel} quality={caply.quality} />
-              </Card>
-            )}
-
-            {(caply.photos.length > 0 || caply.videos?.length > 0) && (
-              <button
-                type="button"
-                onClick={() => caply.setShowMobileSettings((value) => !value)}
-                className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/[0.05] p-4 text-sm lg:hidden"
-              >
-                <span className="flex items-center gap-2">
-                  <Settings2 className="h-4 w-4 text-cyan-300" />
-                  Settings & Audio
-                </span>
-                <ChevronDown className={cn("h-4 w-4 text-slate-400 transition", caply.showMobileSettings && "rotate-180")} />
-              </button>
-            )}
-
-            <AnimatePresence>
-              {caply.showMobileSettings && (caply.photos.length > 0 || caply.videos?.length > 0) && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="space-y-3 overflow-hidden lg:hidden"
-                >
-                  <ControlPanel {...controlsProps} />
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
 
-          <aside className="hidden space-y-4 lg:block">
+          <aside className="space-y-3">
             <Card className="p-0 overflow-hidden">
               <MediaInput
                 photos={caply.photos}
-                videos={caply.videos || []} 
+                videos={caply.videos || []}
                 audio={caply.audio}
-                onFilesAdd={handleFiles}
+                onFilesAdd={caply.onFilesAdd}
                 uploadProgress={caply.uploadProgress}
                 isUploadSuccess={caply.isUploadSuccess}
                 onCancelUpload={caply.cancelUpload}
@@ -196,64 +132,95 @@ export default function CaplyApp() {
               />
             </Card>
 
-            {(caply.photos.length > 0 || caply.videos?.length > 0) && (
-              <AISummary audio={caply.audio} durationLabel={caply.durationLabel} quality={caply.quality} />
-            )}
+            <Card className="space-y-2 p-3">
+              <div>
+                <button type="button" onClick={() => setOpenControl((v) => (v === "music" ? "export" : "music"))} className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Music</p>
+                  <span className="text-xs text-slate-400">{openControl === "music" ? "−" : "+"}</span>
+                </button>
+                {openControl === "music" && (caply.audio ? (
+                  <div className="mt-2 flex items-center justify-between rounded-xl border border-cyan-300/20 bg-cyan-400/10 p-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold text-cyan-100">{caply.audio.name}</p>
+                    </div>
+                    <button onClick={caply.removeAudio} className="text-cyan-100 hover:text-white">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-2 flex items-center gap-2 rounded-xl border border-dashed border-white/15 px-3 py-2 text-xs text-slate-500">
+                    <Music2 className="h-4 w-4" /> No soundtrack
+                  </div>
+                ))}
+              </div>
 
-            <ControlPanel {...controlsProps} />
+              <div>
+                <button type="button" onClick={() => setOpenControl((v) => (v === "style" ? "export" : "style"))} className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Style</p>
+                  <span className="text-xs text-slate-400">{openControl === "style" ? "−" : "+"}</span>
+                </button>
+                {openControl === "style" && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {STYLE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => caply.setStyle(opt)}
+                        className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase transition ${
+                          caply.style === opt ? "border-cyan-300/70 bg-cyan-300/20 text-cyan-100" : "border-white/15 bg-white/[0.02] text-slate-300 hover:border-white/35"
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-            {caply.hasLongVideo && caply.phase !== "generated" && (
-              <div className="flex items-center gap-2 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-xs text-amber-100">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                Long video — may take time
+              <div>
+                <button type="button" onClick={() => setOpenControl((v) => (v === "export" ? "style" : "export"))} className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Export</p>
+                  <span className="text-xs text-slate-400">{openControl === "export" ? "−" : "+"}</span>
+                </button>
+                {openControl === "export" && (
+                  <button
+                    type="button"
+                    onClick={caply.generated ? caply.handleExport : caply.generate}
+                    disabled={(!caply.photos.length && !caply.videos?.length) || caply.phase === "rendering"}
+                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-xs font-black text-slate-950 disabled:opacity-40"
+                  >
+                    {caply.generated ? <Download className="h-4 w-4" /> : caply.phase === "rendering" ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                    {caply.generated ? "Export Video" : caply.phase === "rendering" ? "Creating Story..." : "Create Story"}
+                  </button>
+                )}
+              </div>
+            </Card>
+
+            {caply.errorMsg && (
+              <div className="rounded-2xl border border-red-500/30 bg-[#0f0505] p-3 text-xs text-red-100">
+                {caply.errorMsg}
               </div>
             )}
           </aside>
         </section>
 
-        {/* Bottom Bar Unificada con Spinner */}
-        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#030712]/90 p-3 backdrop-blur-2xl lg:static lg:mt-6 lg:border-none lg:bg-transparent lg:p-0">
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#030712]/90 p-3 backdrop-blur-2xl">
           <div className="mx-auto flex w-full max-w-7xl gap-3">
-            {caply.generated ? (
-              <button 
-                onClick={caply.handleExport}
-                className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-white text-slate-950 font-black shadow-xl transition active:scale-[0.98]"
-              >
-                <Download className="h-5 w-5" /> Export Video
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={(!caply.photos.length && !caply.videos?.length) || caply.phase === "rendering"}
-                onClick={caply.generate}
-                className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 to-violet-400 font-black text-slate-950 shadow-2xl shadow-cyan-400/20 transition hover:shadow-cyan-400/35 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {caply.phase === "rendering" ? (
-                  <RefreshCw className="h-5 w-5 animate-spin" />
-                ) : (
-                  <Wand2 className="h-5 w-5" />
-                )}
-                {caply.phase === "rendering" ? "Creating Story..." : "Create Story"}
-              </button>
-            )}
-            <button 
+            <button
               type="button"
-              onClick={() => caply.setShowMobileSettings((v) => !v)}
-              className={cn(
-                "grid h-14 w-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] lg:hidden transition-colors",
-                caply.showMobileSettings && "bg-cyan-300/20 border-cyan-300/30"
-              )}
-              aria-label="Open settings"
+              disabled={(!caply.photos.length && !caply.videos?.length) || caply.phase === "rendering"}
+              onClick={caply.generate}
+              className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 to-violet-400 font-black text-slate-950 shadow-2xl shadow-cyan-400/20 transition hover:shadow-cyan-400/35 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <Settings2 className={cn("h-5 w-5 transition-transform", caply.showMobileSettings && "text-cyan-300 rotate-90")} />
+              {caply.phase === "rendering" ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}
+              {caply.phase === "rendering" ? "Creating Story..." : "Create Story"}
             </button>
           </div>
         </div>
 
-        {/* Notificación Toast Inteligente */}
         <AnimatePresence>
           {caply.errorMsg && (
-            <motion.div // Use caply.errorMsg to determine visibility
+            <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95 }}
@@ -266,7 +233,6 @@ export default function CaplyApp() {
                 <div className="flex-1 min-w-0">
                   <h4 className="text-sm font-bold text-white">{caply.errorMsg}</h4>
                   <p className="mt-0.5 text-xs text-red-200/60 line-clamp-1">Please review server logs and try again.</p>
-                  <p className="mt-1 break-all font-mono text-[9px] text-red-400/50">{caply.step || "No additional details"}</p>
                 </div>
                 <button onClick={caply.resetError} className="text-white/20 hover:text-white"><X className="h-4 w-4" /></button>
               </div>
@@ -276,6 +242,8 @@ export default function CaplyApp() {
 
         <Footer />
       </div>
+
+      <style>{`@keyframes previewZoom { 0% { transform: scale(1); } 50% { transform: scale(1.045); } 100% { transform: scale(1); } }`}</style>
     </main>
   );
 }
