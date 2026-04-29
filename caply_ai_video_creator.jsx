@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios"; // Import axios
 import { MediaInput } from "./MediaInput"; // Corregida la ruta de importación
+import { Timeline } from "./Timeline";
 import {
   Upload,
   Music,
@@ -372,6 +373,12 @@ export default function CaplyApp() {
                 )}
               </div>
             </Card>
+
+            {(photos.length > 0 || videos.length > 0) && (
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                <Timeline photos={photos} videos={videos} audio={audio} />
+              </motion.div>
+            )}
 
             <div className="lg:hidden">
               <Card className="p-0 overflow-hidden mb-5">

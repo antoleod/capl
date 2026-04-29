@@ -11,6 +11,9 @@ build/
 .env.local
 .env.*.local
 *.local
+.*ouputs
+.*uploads
+
 
 # Logs
 logs/
