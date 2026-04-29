@@ -13,6 +13,7 @@ export default function CaplyApp() {
   const caply = useCaply();
   const [isDragging, setIsDragging] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
+  const [mode, setMode] = useState<"tiktok" | "youtube" | "instagram">("tiktok");
   const [openControl, setOpenControl] = useState<"music" | "style" | "export">("music");
 
   const visualMedia = useMemo(() => [...caply.photos, ...(caply.videos || [])], [caply.photos, caply.videos]);
@@ -77,11 +78,29 @@ export default function CaplyApp() {
       <div className="relative mx-auto flex min-h-screen w-full max-w-[1800px] flex-col overflow-x-hidden px-3 pb-24 pt-3 sm:px-5 lg:px-8 lg:pb-8">
         <Header />
 
+        <section className="mb-3">
+          <div className="inline-flex rounded-2xl border border-white/10 bg-white/[0.03] p-1">
+            <button
+              type="button"
+              onClick={() => setMode("tiktok")}
+              className={`rounded-xl px-3 py-1.5 text-[11px] font-semibold uppercase ${mode === "tiktok" ? "bg-cyan-300/20 text-cyan-100" : "text-slate-300"}`}
+            >
+              TikTok/Reels
+            </button>
+            <button type="button" onClick={() => setMode("youtube")} className={`rounded-xl px-3 py-1.5 text-[11px] font-semibold uppercase ${mode === "youtube" ? "bg-cyan-300/20 text-cyan-100" : "text-slate-300"}`}>
+              YouTube
+            </button>
+            <button type="button" onClick={() => setMode("instagram")} className={`rounded-xl px-3 py-1.5 text-[11px] font-semibold uppercase ${mode === "instagram" ? "bg-cyan-300/20 text-cyan-100" : "text-slate-300"}`}>
+              Instagram
+            </button>
+          </div>
+        </section>
+
         <section className="grid flex-1 min-w-0 gap-4 lg:gap-6 lg:grid-cols-[minmax(0,1.55fr)_320px] lg:items-start">
           <div className="space-y-4">
             <section className="rounded-3xl border border-white/10 bg-[#070d1b] p-3 shadow-[0_16px_60px_rgba(0,0,0,0.45)] sm:p-4">
-              <div className="relative mx-auto w-full max-w-[420px] overflow-hidden rounded-2xl border border-white/10 bg-black">
-                <div className="aspect-[9/16] w-full max-h-[45vh]">
+              <div className="relative mx-auto w-full max-w-[460px] overflow-hidden rounded-2xl border border-white/10 bg-black">
+                <div className={`${mode === "tiktok" ? "aspect-[9/16] min-h-[68vh]" : mode === "instagram" ? "aspect-square min-h-[60vh]" : "aspect-video min-h-[52vh]"} w-full`}>
                   {activeVisual ? (
                     <img
                       key={activeVisual.id}
@@ -183,15 +202,26 @@ export default function CaplyApp() {
                   <span className="text-xs text-slate-400">{openControl === "export" ? "−" : "+"}</span>
                 </button>
                 {openControl === "export" && (
-                  <button
-                    type="button"
-                    onClick={caply.generated ? caply.handleExport : caply.generate}
-                    disabled={(!caply.photos.length && !caply.videos?.length) || caply.phase === "rendering"}
-                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-xs font-black text-slate-950 disabled:opacity-40"
-                  >
-                    {caply.generated ? <Download className="h-4 w-4" /> : caply.phase === "rendering" ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                    {caply.generated ? "Export Video" : caply.phase === "rendering" ? "Creating Story..." : "Create Story"}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => caply.autoCreate(mode, caply.style)}
+                      disabled={(!caply.photos.length && !caply.videos?.length) || caply.phase === "rendering"}
+                      className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-300/40 bg-cyan-300/15 py-2 text-xs font-black text-cyan-100 disabled:opacity-40"
+                    >
+                      <Wand2 className="h-4 w-4" />
+                      Auto Create
+                    </button>
+                    <button
+                      type="button"
+                      onClick={caply.generated ? caply.handleExport : caply.generate}
+                      disabled={(!caply.photos.length && !caply.videos?.length) || caply.phase === "rendering"}
+                      className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-xs font-black text-slate-950 disabled:opacity-40"
+                    >
+                      {caply.generated ? <Download className="h-4 w-4" /> : caply.phase === "rendering" ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                      {caply.generated ? "Export Video" : caply.phase === "rendering" ? "Creating Story..." : "Create Story"}
+                    </button>
+                  </>
                 )}
               </div>
             </Card>
@@ -209,7 +239,7 @@ export default function CaplyApp() {
             <button
               type="button"
               disabled={(!caply.photos.length && !caply.videos?.length) || caply.phase === "rendering"}
-              onClick={caply.generate}
+              onClick={() => caply.autoCreate(mode, caply.style)}
               className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 to-violet-400 font-black text-slate-950 shadow-2xl shadow-cyan-400/20 transition hover:shadow-cyan-400/35 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {caply.phase === "rendering" ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}

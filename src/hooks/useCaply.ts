@@ -12,6 +12,11 @@ const generateId = () => {
 // Opciones para botones segmentados (Regla 5)
 export const STYLE_OPTIONS = ["Auto", "Cinematic", "Modern", "Vintage", "Minimal"];
 export const ASPECT_OPTIONS = ["9:16", "16:9", "1:1"];
+const MODE_ASPECT_MAP = {
+  tiktok: "9:16",
+  youtube: "16:9",
+  instagram: "1:1",
+} as const;
 
 export function useCaply() {
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -340,6 +345,93 @@ export function useCaply() {
     audioVolume,
   ]);
 
+  const autoCreate = useCallback(async (mode: keyof typeof MODE_ASPECT_MAP, nextStyle = "Auto") => {
+    const modeAspect = MODE_ASPECT_MAP[mode] ?? "9:16";
+    setAspect(modeAspect);
+    setStyle(nextStyle);
+
+    if (audio) {
+      setAudioLoop(true);
+      setAudioFadeIn(1);
+      setAudioFadeOut(1);
+    }
+
+    if (!photos.length) return;
+
+    setErrorMsg("");
+    setOutputUrl(null);
+    setJobId(null);
+    setRetryCount(0);
+    setIsUploadSuccess(false);
+
+    try {
+      setPhase("rendering");
+      setStep("Uploading photos...");
+      setUploadProgress(5);
+
+      const sessionId = crypto.randomUUID();
+      const allMediaFiles = [...photos.map((p) => p.file), ...videos.map((v) => v.file)];
+      const imagePaths = await uploadPhotos(allMediaFiles, sessionId, setUploadProgress);
+
+      let audioPath: string | null = null;
+      if (audio) {
+        setStep("Uploading audio...");
+        audioPath = await uploadAudio(audio.file, sessionId, (pct) => setUploadProgress(pct));
+      }
+
+      setIsUploadSuccess(true);
+      setUploadProgress(null);
+      setStep("Starting render engine...");
+      setProgress(45);
+
+      const audioSettings = audio
+        ? {
+            trimStart: audioTrimStart > 0 ? audioTrimStart : undefined,
+            trimEnd: audioTrimEnd && audioTrimEnd > audioTrimStart ? audioTrimEnd : undefined,
+            loop: true,
+            fadeIn: 1,
+            fadeOut: 1,
+            volume: audioVolume,
+          }
+        : undefined;
+
+      const nextJobId = await startRender({
+        imagePaths,
+        audioPath,
+        durationLabel,
+        style: nextStyle,
+        quality,
+        aspect: modeAspect,
+        audioSettings,
+        fps,
+        bitrate,
+        transition,
+      });
+
+      setJobId(nextJobId);
+      setStep("Rendering video...");
+      setProgress(50);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Export failed. Try lower quality or shorter duration.";
+      setUploadProgress(null);
+      setPhase("error");
+      setErrorMsg(message);
+      setProgress(0);
+    }
+  }, [
+    photos,
+    videos,
+    audio,
+    durationLabel,
+    quality,
+    fps,
+    bitrate,
+    transition,
+    audioTrimStart,
+    audioTrimEnd,
+    audioVolume,
+  ]);
+
   const handleExport = useCallback(async () => {
     if (!outputUrl) return;
 
@@ -429,6 +521,7 @@ export function useCaply() {
     removeAudio,
     cancelUpload,
     generate,
+    autoCreate,
     handleExport,
     resetError,
   };

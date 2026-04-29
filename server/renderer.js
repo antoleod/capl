@@ -24,6 +24,13 @@ const EFFECT_PRESETS = {
     vignette: 'vignette=PI/5',
     zoom: "zoompan=z='if(lte(on,1),1.0,min(1.06,zoom+0.0005))':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}:fps={fps}",
   },
+  modern: {
+    tone: 'eq=brightness=0.01:contrast=1.1:saturation=1.02',
+    blur: 'gblur=sigma=0.15',
+    warmth: 'colorbalance=rs=0.01:gs=0.00:bs=-0.01',
+    vignette: 'vignette=PI/5.5',
+    zoom: "zoompan=z='if(lte(on,1),1.0,min(1.05,zoom+0.0005))':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}:fps={fps}",
+  },
   calm_sleep: {
     tone: 'eq=brightness=0.02:contrast=1.02:saturation=0.92',
     blur: 'gblur=sigma=0.8',
@@ -99,7 +106,13 @@ export async function renderVideo(job) {
   }
 
   const requestedPreset = (style || '').toLowerCase().replace(/\s+/g, '_');
-  const preset = EFFECT_PRESETS[requestedPreset] || EFFECT_PRESETS[DEFAULT_EFFECT_PRESET];
+  const styleAlias = {
+    auto: 'baby_soft',
+    cinematic: 'cinematic',
+    modern: 'modern',
+  };
+  const normalizedPreset = styleAlias[requestedPreset] || requestedPreset;
+  const preset = EFFECT_PRESETS[normalizedPreset] || EFFECT_PRESETS[DEFAULT_EFFECT_PRESET];
   const zoomExpr = preset.zoom.replace('{w}', String(resolution.width)).replace('{h}', String(resolution.height)).replace('{fps}', String(fps));
 
   let builtVideo = false;

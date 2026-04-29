@@ -91,10 +91,10 @@ export function Timeline({ photos, videos, audio, durationLabel, onPhotoRemove, 
 
   return (
     <section className="w-full min-w-0 overflow-hidden rounded-3xl border border-white/10 bg-[#090f1d]/90 p-3 shadow-[0_14px_50px_rgba(0,0,0,0.45)] sm:p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-300/90">Timeline</p>
-          <p className="text-[11px] text-slate-400">Visual, audio and effects tracks</p>
+          <p className="text-[10px] text-slate-400">Mini timeline</p>
         </div>
 
         <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
@@ -108,9 +108,9 @@ export function Timeline({ photos, videos, audio, durationLabel, onPhotoRemove, 
         </div>
       </div>
 
-      <div className="w-full overflow-x-auto overflow-y-hidden pb-1">
+      <div className="w-full overflow-x-auto overflow-y-hidden pb-0.5">
         <div className="min-w-full" style={{ width: timelineWidth }}>
-          <div className="relative mb-2 h-9 rounded-xl border border-white/10 bg-[#0b1220]">
+          <div className="relative mb-1.5 h-8 rounded-xl border border-white/10 bg-[#0b1220]">
             {Array.from({ length: ticks }).map((_, idx) => {
               const sec = idx * tickStepSec;
               if (sec > totalDuration) return null;
@@ -124,10 +124,10 @@ export function Timeline({ photos, videos, audio, durationLabel, onPhotoRemove, 
             })}
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <div className="rounded-xl border border-white/10 bg-[#0c1324] p-2">
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Visual track</div>
-              <div className="flex min-h-[84px] items-stretch gap-2">
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Visual track</div>
+              <div className="flex min-h-[72px] items-stretch gap-2">
                 {clips.length === 0 ? <div className="flex items-center text-xs text-slate-500">Add photos/videos to build your sequence.</div> : null}
                 {clips.map((clip) => {
                   const width = Math.max(96, Math.round(clip.durationSec * pxPerSec));
@@ -169,8 +169,8 @@ export function Timeline({ photos, videos, audio, durationLabel, onPhotoRemove, 
             </div>
 
             <div className="rounded-xl border border-white/10 bg-[#0c1324] p-2">
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Audio track</div>
-              <div className="min-h-[56px]">
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Audio track</div>
+              <div className="min-h-[48px]">
                 {!audio ? (
                   <div className="flex h-[44px] items-center rounded-lg border border-dashed border-white/15 px-3 text-xs text-slate-500">No audio selected.</div>
                 ) : (
@@ -191,7 +191,7 @@ export function Timeline({ photos, videos, audio, durationLabel, onPhotoRemove, 
             </div>
 
             <div className="rounded-xl border border-white/10 bg-[#0c1324] p-2">
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Effects / Text</div>
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Effects / Text</div>
               <div className="relative h-[44px] overflow-hidden rounded-lg border border-dashed border-white/15 bg-[#0a111f]">
                 {clips.length === 0 ? (
                   <div className="flex h-full items-center px-3 text-xs text-slate-500">Placeholder track. Text titles and transitions can be added here later.</div>
