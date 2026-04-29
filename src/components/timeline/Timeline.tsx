@@ -19,6 +19,7 @@ type TimelineProps = {
   onPhotoRemove?: (id: string) => void;
   onVideoRemove?: (id: string) => void;
   onAudioRemove?: () => void;
+  mismatchIds?: string[];
 };
 
 const formatTime = (sec: number) => {
@@ -30,7 +31,7 @@ const formatTime = (sec: number) => {
   return `${m}:${String(rs).padStart(2, "0")}`;
 };
 
-export function Timeline({ photos, videos, audio, durationLabel, onPhotoRemove, onVideoRemove, onAudioRemove }: TimelineProps) {
+export function Timeline({ photos, videos, audio, durationLabel, onPhotoRemove, onVideoRemove, onAudioRemove, mismatchIds = [] }: TimelineProps) {
   const [pxPerSec, setPxPerSec] = useState(28);
   const [audioDurationSec, setAudioDurationSec] = useState<number | null>(null);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
@@ -140,7 +141,7 @@ export function Timeline({ photos, videos, audio, durationLabel, onPhotoRemove, 
                       key={clip.id}
                       onClick={() => setSelectedClipId(clip.id)}
                       className={`group relative overflow-hidden rounded-xl border bg-slate-900 transition ${
-                        selectedClipId === clip.id ? "border-cyan-300/70 ring-1 ring-cyan-300/60" : "border-white/15"
+                        selectedClipId === clip.id ? "border-cyan-300/70 ring-1 ring-cyan-300/60" : mismatchIds.includes(clip.id) ? "border-orange-400/70 ring-1 ring-orange-300/50" : "border-white/15"
                       }`}
                       style={{ width }}
                     >
@@ -160,6 +161,7 @@ export function Timeline({ photos, videos, audio, durationLabel, onPhotoRemove, 
                         <div>
                           <p className="truncate text-[11px] font-semibold text-slate-100">{clip.name}</p>
                           <p className="text-[10px] text-slate-300">{formatTime(clip.durationSec)}</p>
+                          {mismatchIds.includes(clip.id) && <p className="text-[10px] font-semibold text-orange-300">May not match</p>}
                         </div>
                       </div>
                     </article>

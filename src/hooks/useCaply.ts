@@ -55,6 +55,10 @@ export function useCaply() {
   const [errorMsg, setErrorMsg] = useState("");
   const [retryCount, setRetryCount] = useState(0);
   const [showMobileSettings, setShowMobileSettings] = useState(false);
+  const [smartOrderByColor, setSmartOrderByColor] = useState(false);
+  const [mismatchIds, setMismatchIds] = useState<string[]>([]);
+  const [lastRemovedPhoto, setLastRemovedPhoto] = useState<MediaPhoto | null>(null);
+  const [lastCleanSnapshot, setLastCleanSnapshot] = useState<MediaPhoto[] | null>(null);
 
   const durationLabel = useMemo(
     () => parseDuration(duration, customDuration, customUnit),
@@ -70,6 +74,118 @@ export function useCaply() {
     return [...photos, ...videos] as (MediaPhoto & { type: 'image' | 'video' })[];
   }, [photos, videos]);
 
+  const extractVisualMeta = useCallback(async (file: File) => {
+    return new Promise<{ averageColor: [number, number, number]; brightness: number; warmth: number }>((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          const size = 32;
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) throw new Error("no-canvas");
+          ctx.drawImage(img, 0, 0, size, size);
+          const data = ctx.getImageData(0, 0, size, size).data;
+          let r = 0, g = 0, b = 0;
+          const px = data.length / 4;
+          for (let i = 0; i < data.length; i += 4) {
+            r += data[i];
+            g += data[i + 1];
+            b += data[i + 2];
+          }
+          const ar = r / px, ag = g / px, ab = b / px;
+          const brightness = (0.299 * ar + 0.587 * ag + 0.114 * ab) / 255;
+          const warmth = ((ar - ab) / 255 + 1) / 2;
+          resolve({ averageColor: [ar, ag, ab], brightness, warmth });
+        } catch (e) {
+          reject(e);
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("image-load"));
+      };
+      img.src = url;
+    });
+  }, []);
+
+  const calcDistance = (a: { averageColor: [number, number, number]; brightness: number; warmth: number }, b: { averageColor: [number, number, number]; brightness: number; warmth: number }) => {
+    const dc = Math.sqrt(
+      (a.averageColor[0] - b.averageColor[0]) ** 2 +
+      (a.averageColor[1] - b.averageColor[1]) ** 2 +
+      (a.averageColor[2] - b.averageColor[2]) ** 2
+    ) / 441.67;
+    const db = Math.abs(a.brightness - b.brightness);
+    const dw = Math.abs(a.warmth - b.warmth);
+    return dc * 0.6 + db * 0.25 + dw * 0.15;
+  };
+
+  const enrichAndOrderPhotos = useCallback(async (items: MediaPhoto[]) => {
+    try {
+      const enriched = await Promise.all(items.map(async (p) => {
+        const meta = await extractVisualMeta(p.file);
+        return { ...p, visualMeta: meta } as MediaPhoto & { visualMeta?: { averageColor: [number, number, number]; brightness: number; warmth: number } };
+      }));
+
+      const withMeta = enriched.filter((p) => p.visualMeta) as Array<MediaPhoto & { visualMeta: { averageColor: [number, number, number]; brightness: number; warmth: number } }>;
+      if (!withMeta.length) return { ordered: items, mismatches: [] as string[] };
+
+      const packAvg = withMeta.reduce(
+        (acc, p) => ({
+          averageColor: [
+            acc.averageColor[0] + p.visualMeta.averageColor[0],
+            acc.averageColor[1] + p.visualMeta.averageColor[1],
+            acc.averageColor[2] + p.visualMeta.averageColor[2],
+          ] as [number, number, number],
+          brightness: acc.brightness + p.visualMeta.brightness,
+          warmth: acc.warmth + p.visualMeta.warmth,
+        }),
+        { averageColor: [0, 0, 0] as [number, number, number], brightness: 0, warmth: 0 }
+      );
+      const avg = {
+        averageColor: [packAvg.averageColor[0] / withMeta.length, packAvg.averageColor[1] / withMeta.length, packAvg.averageColor[2] / withMeta.length] as [number, number, number],
+        brightness: packAvg.brightness / withMeta.length,
+        warmth: packAvg.warmth / withMeta.length,
+      };
+
+      const scored = withMeta.map((p) => ({ id: p.id, distance: calcDistance(p.visualMeta, avg) }));
+      const avgDist = scored.reduce((s, x) => s + x.distance, 0) / scored.length;
+      const mismatches = scored.filter((x) => x.distance > avgDist * 1.8 && x.distance > 0.22).map((x) => x.id);
+
+      let ordered = enriched;
+      if (smartOrderByColor && withMeta.length > 1) {
+        const remaining = [...withMeta];
+        const sorted: typeof remaining = [];
+        remaining.sort((a, b) => a.visualMeta.brightness - b.visualMeta.brightness);
+        sorted.push(remaining.shift()!);
+        while (remaining.length) {
+          const last = sorted[sorted.length - 1];
+          let bestIdx = 0;
+          let bestDist = Infinity;
+          for (let i = 0; i < remaining.length; i += 1) {
+            const d = calcDistance(last.visualMeta, remaining[i].visualMeta);
+            if (d < bestDist) {
+              bestDist = d;
+              bestIdx = i;
+            }
+          }
+          sorted.push(remaining.splice(bestIdx, 1)[0]);
+        }
+        const metaMap = new Map(sorted.map((p) => [p.id, p]));
+        ordered = enriched.map((p) => metaMap.get(p.id) || p);
+        ordered = sorted;
+      }
+
+      return { ordered, mismatches };
+    } catch {
+      return { ordered: items, mismatches: [] as string[] };
+    }
+  }, [extractVisualMeta, smartOrderByColor]);
+
   const hasAudio = useMemo(() => !!audio, [audio]);
   const mediaCount = allMedia.length;
 
@@ -84,7 +200,7 @@ export function useCaply() {
   const hasLongVideo = totalSeconds >= 600;
   const generated = phase === "generated";
 
-  const onFilesAdd = useCallback((files: FileList | null) => {
+  const onFilesAdd = useCallback(async (files: FileList | null) => {
     if (!files) return;
     console.log("Adding files:", files.length); // Debug log
     const filesArray = Array.from(files);
@@ -116,7 +232,12 @@ export function useCaply() {
     // Procesar Audio (solo el primero encontrado)
     const audioFile = filesArray.find((item) => item.type.startsWith("audio/"));
 
-    if (newPhotos.length) setPhotos((prev) => [...prev, ...newPhotos]);
+    if (newPhotos.length) {
+      const merged = [...photos, ...newPhotos];
+      const { ordered, mismatches } = await enrichAndOrderPhotos(merged as MediaPhoto[]);
+      setPhotos(ordered as MediaPhoto[]);
+      setMismatchIds(mismatches);
+    }
     if (newVideos.length) setVideos((prev) => [...prev, ...newVideos]);
     if (audioFile) {
       setAudio({
@@ -131,7 +252,7 @@ export function useCaply() {
     if (newPhotos.length || newVideos.length || photos.length > 0 || videos.length > 0) {
       setPhase("ready");
     }
-  }, [photos.length, videos.length]);
+  }, [photos, videos, enrichAndOrderPhotos]);
 
   const handlePhotos = useCallback((files: FileList | null) => {
     const items = Array.from(files || [])
@@ -168,6 +289,8 @@ export function useCaply() {
 
   const removePhoto = useCallback((id: string) => {
     setPhotos((previous) => {
+      const removed = previous.find((photo) => photo.id === id) || null;
+      if (removed) setLastRemovedPhoto(removed);
       const next = previous.filter((photo) => photo.id !== id);
 
       if (!next.length) {
@@ -179,7 +302,27 @@ export function useCaply() {
 
       return next;
     });
+    setMismatchIds((prev) => prev.filter((x) => x !== id));
   }, []);
+
+  const undoRemovePhoto = useCallback(() => {
+    if (!lastRemovedPhoto) return;
+    setPhotos((prev) => [lastRemovedPhoto, ...prev]);
+    setLastRemovedPhoto(null);
+  }, [lastRemovedPhoto]);
+
+  const autoCleanMismatches = useCallback(() => {
+    if (!mismatchIds.length) return;
+    setLastCleanSnapshot(photos);
+    setPhotos((prev) => prev.filter((p) => !mismatchIds.includes(p.id)));
+    setMismatchIds([]);
+  }, [mismatchIds, photos]);
+
+  const undoAutoClean = useCallback(() => {
+    if (!lastCleanSnapshot) return;
+    setPhotos(lastCleanSnapshot);
+    setLastCleanSnapshot(null);
+  }, [lastCleanSnapshot]);
 
   const removeVideo = useCallback((id: string) => {
     setVideos((previous) => {
@@ -503,6 +646,11 @@ export function useCaply() {
     errorMsg,
     showMobileSettings,
     showAdvancedSettings,
+    smartOrderByColor,
+    setSmartOrderByColor,
+    mismatchIds,
+    lastRemovedPhoto,
+    lastCleanSnapshot,
     setShowMobileSettings,
     setShowAdvancedSettings,
     durationLabel,
@@ -519,6 +667,9 @@ export function useCaply() {
     removePhoto,
     removeVideo,
     removeAudio,
+    undoRemovePhoto,
+    autoCleanMismatches,
+    undoAutoClean,
     cancelUpload,
     generate,
     autoCreate,
@@ -526,4 +677,3 @@ export function useCaply() {
     resetError,
   };
 }
-

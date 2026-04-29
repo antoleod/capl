@@ -61,6 +61,55 @@ export default function CaplyApp() {
     return "small";
   })();
 
+  const mapQualityToEngine = (q: "auto" | "720p" | "1080p" | "2k" | "4k" | "8k") => {
+    if (q === "auto") return { quality: "1080p", bitrate: "8M", fps: 30 };
+    if (q === "720p") return { quality: "720p", bitrate: "4M", fps: 24 };
+    if (q === "1080p") return { quality: "1080p", bitrate: "8M", fps: 30 };
+    if (q === "2k") return { quality: "2K", bitrate: "12M", fps: 30 };
+    if (q === "4k") return { quality: "4K", bitrate: "16M", fps: 30 };
+    return { quality: "4K", bitrate: "24M", fps: 60 };
+  };
+
+  const mapPlatformToMode = (p: "tiktok" | "youtube" | "instagram_1_1" | "instagram_9_16" | "custom"): "tiktok" | "youtube" | "instagram" => {
+    if (p === "youtube") return "youtube";
+    if (p === "instagram_1_1" || p === "instagram_9_16") return "instagram";
+    return "tiktok";
+  };
+
+  const mapPlatformToAspect = (p: "tiktok" | "youtube" | "instagram_1_1" | "instagram_9_16" | "custom") => {
+    if (p === "youtube") return "16:9";
+    if (p === "instagram_1_1") return "1:1";
+    return "9:16";
+  };
+
+  const resolvedDurationLabel = isCustomDuration ? `${Math.max(3, Math.floor(customDurationSeconds))}${customDurationUnit === "hours" ? "h" : customDurationUnit === "minutes" ? "m" : "s"}` : durationPreset === "Auto" ? caply.durationLabel : durationPreset.replace("min", "m");
+
+  const runAutoCreateWithSelections = () => {
+    const engine = mapQualityToEngine(qualityPreset);
+    caply.setQuality(engine.quality);
+    caply.setBitrate(engine.bitrate);
+    caply.setFps(engine.fps);
+    caply.setAspect(mapPlatformToAspect(platformPreset));
+    caply.setDuration(resolvedDurationLabel);
+    caply.autoCreate(mapPlatformToMode(platformPreset), caply.style);
+  };
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("caply_user_prefs");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<{ videoGoal: "sleep" | "relax" | "short" | "story"; durationPreset: string; platformPreset: "tiktok" | "youtube" | "instagram_1_1" | "instagram_9_16" | "custom"; qualityPreset: "auto" | "720p" | "1080p" | "2k" | "4k" | "8k"; }>;
+      if (parsed.videoGoal) setVideoGoal(parsed.videoGoal);
+      if (parsed.durationPreset) setDurationPreset(parsed.durationPreset);
+      if (parsed.platformPreset) setPlatformPreset(parsed.platformPreset);
+      if (parsed.qualityPreset) setQualityPreset(parsed.qualityPreset);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("caply_user_prefs", JSON.stringify({ videoGoal, durationPreset, platformPreset, qualityPreset }));
+  }, [videoGoal, durationPreset, platformPreset, qualityPreset]);
+
   const visualMedia = useMemo(() => [...caply.photos, ...(caply.videos || [])], [caply.photos, caply.videos]);
   const activeVisual = visualMedia[previewIndex % Math.max(visualMedia.length, 1)];
 
@@ -177,7 +226,13 @@ export default function CaplyApp() {
               onPhotoRemove={caply.removePhoto}
               onVideoRemove={caply.removeVideo}
               onAudioRemove={caply.removeAudio}
+              mismatchIds={caply.mismatchIds || []}
             />
+            {!!caply.mismatchIds?.length && (
+              <div className="rounded-2xl border border-orange-400/30 bg-orange-400/10 px-3 py-2 text-xs text-orange-100">
+                This image looks visually different from the rest of the pack. Consider removing it for smoother transitions.
+              </div>
+            )}
           </div>
 
           <aside className="space-y-3">
@@ -277,6 +332,30 @@ export default function CaplyApp() {
                     <Music2 className="h-4 w-4" /> No soundtrack
                   </div>
                 ))}
+                <label className="mt-2 flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-2 py-1.5 text-[11px] text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={!!caply.smartOrderByColor}
+                    onChange={(e) => caply.setSmartOrderByColor?.(e.target.checked)}
+                    className="h-3.5 w-3.5"
+                  />
+                  Smart order by color
+                </label>
+                {!!caply.mismatchIds?.length && (
+                  <div className="mt-2 space-y-1 rounded-xl border border-orange-400/30 bg-orange-400/10 p-2">
+                    <p className="text-[11px] font-semibold text-orange-100">Possible mismatches</p>
+                    <div className="flex gap-3">
+                      <button onClick={() => caply.autoCleanMismatches?.()} className="text-[10px] font-bold text-orange-200">Auto-clean pack</button>
+                      {!!caply.lastCleanSnapshot?.length && <button onClick={() => caply.undoAutoClean?.()} className="text-[10px] font-bold text-cyan-200">Undo clean</button>}
+                    </div>
+                    {caply.photos.filter((p) => caply.mismatchIds?.includes(p.id)).slice(0, 6).map((p) => (
+                      <div key={p.id} className="flex items-center justify-between gap-2 rounded-lg border border-orange-300/30 bg-black/20 px-2 py-1">
+                        <span className="truncate text-[10px] text-orange-100">{p.name}</span>
+                        <button onClick={() => caply.removePhoto(p.id)} className="text-[10px] font-bold text-orange-200">Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -309,9 +388,12 @@ export default function CaplyApp() {
                 </button>
                 {openControl === "export" && (
                   <>
+                    <div className="mt-2 rounded-xl border border-white/10 bg-white/[0.03] p-2 text-[10px] text-slate-300">
+                      Quality check: {renderWeight.toUpperCase()} load. {isLongDuration ? "Long duration selected. " : ""}{isVeryHeavyDuration ? "High quality + long duration can be slow." : "Ready to render."}
+                    </div>
                     <button
                       type="button"
-                      onClick={() => caply.autoCreate(mode, caply.style)}
+                      onClick={runAutoCreateWithSelections}
                       disabled={(!caply.photos.length && !caply.videos?.length) || caply.phase === "rendering"}
                       className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-300/40 bg-cyan-300/15 py-2 text-xs font-black text-cyan-100 disabled:opacity-40"
                     >
@@ -345,7 +427,7 @@ export default function CaplyApp() {
             <button
               type="button"
               disabled={(!caply.photos.length && !caply.videos?.length) || caply.phase === "rendering"}
-              onClick={() => caply.autoCreate(mode, caply.style)}
+              onClick={runAutoCreateWithSelections}
               className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 to-violet-400 font-black text-slate-950 shadow-2xl shadow-cyan-400/20 transition hover:shadow-cyan-400/35 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {caply.phase === "rendering" ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}
@@ -355,6 +437,19 @@ export default function CaplyApp() {
         </div>
 
         <AnimatePresence>
+          {!!caply.lastRemovedPhoto && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              className="fixed bottom-40 left-3 right-3 z-[70] mx-auto max-w-md rounded-xl border border-cyan-300/30 bg-[#071423] p-3 text-xs text-cyan-100"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="truncate">Image removed.</span>
+                <button className="font-bold text-cyan-200" onClick={() => caply.undoRemovePhoto?.()}>Undo</button>
+              </div>
+            </motion.div>
+          )}
           {caply.errorMsg && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
