@@ -53,7 +53,7 @@ export function useCaply() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [outputUrl, setOutputUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
-  const [retryCount, setRetryCount] = useState(0);
+  const retryCountRef = useRef(0);
   const [showMobileSettings, setShowMobileSettings] = useState(false);
   const [smartOrderByColor, setSmartOrderByColor] = useState(false);
   const [mismatchIds, setMismatchIds] = useState<string[]>([]);
@@ -355,7 +355,7 @@ export function useCaply() {
 
     try {
       const data = await getStatus(id);
-      setRetryCount(0);
+      retryCountRef.current = 0;
 
       if (data?.status === "done" && data.url) {
         setPhase("generated");
@@ -374,12 +374,12 @@ export function useCaply() {
 
       if (data?.status === "processing") {
         const serverProgress = typeof data.progress === "number" ? data.progress : 0;
-        setProgress(50 + serverProgress / 2);
+        setProgress(Math.max(progress, serverProgress));
+        setStep(`Rendering... ${Math.round(serverProgress)}%`);
       }
     } catch {
-      setRetryCount((previous) => previous + 1);
-
-      if (retryCount >= 10) {
+      retryCountRef.current += 1;
+      if (retryCountRef.current >= 10) {
         setPhase("error");
         setErrorMsg("Server connection lost. Polling stopped.");
         return true;
@@ -387,7 +387,7 @@ export function useCaply() {
     }
 
     return false;
-  }, [retryCount]);
+  }, [progress]);
 
   useEffect(() => {
     if (!jobId || phase !== "rendering") return;
@@ -406,7 +406,7 @@ export function useCaply() {
     setErrorMsg("");
     setOutputUrl(null);
     setJobId(null);
-    setRetryCount(0);
+    retryCountRef.current = 0;
     setIsUploadSuccess(false);
 
     try {
@@ -449,6 +449,7 @@ export function useCaply() {
         imagePaths,
         audioPath,
         durationLabel,
+        targetDurationSeconds: Math.max(3, durationToSeconds(durationLabel)),
         style,
         quality,
         aspect,
@@ -504,7 +505,7 @@ export function useCaply() {
     setErrorMsg("");
     setOutputUrl(null);
     setJobId(null);
-    setRetryCount(0);
+    retryCountRef.current = 0;
     setIsUploadSuccess(false);
 
     try {
@@ -542,6 +543,7 @@ export function useCaply() {
         imagePaths,
         audioPath,
         durationLabel,
+        targetDurationSeconds: Math.max(3, durationToSeconds(durationLabel)),
         style: nextStyle,
         quality,
         aspect: modeAspect,

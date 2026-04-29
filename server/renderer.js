@@ -71,10 +71,27 @@ export async function runFFmpeg(args, jobId, totalDuration, onProgressCallback) 
   });
 }
 
+async function probeAudioDurationSeconds(audioPath) {
+  return new Promise((resolve) => {
+    const proc = spawn(FFMPEG_PATH, ['-i', audioPath, '-f', 'null', '-']);
+    let stderr = '';
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.on('close', () => {
+      const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+      if (!m) return resolve(null);
+      const sec = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+      resolve(Number.isFinite(sec) && sec > 0 ? sec : null);
+    });
+    proc.on('error', () => resolve(null));
+  });
+}
+
 export async function renderVideo(job) {
-  const { id, imagePaths, audioPath, durationLabel, quality, aspect, audioSettings, targetFps, targetBitrate, transition, style } = job;
+  const { id, imagePaths, audioPath, durationLabel, targetDurationSeconds, quality, aspect, audioSettings, targetFps, targetBitrate, transition, style } = job;
   const rawDuration = parseDurationToSeconds(durationLabel);
-  const totalDuration = Math.min(Math.max(rawDuration || 3, 3), 21600); // safe guardrail: 3s..6h
+  const audioDuration = audioPath ? await probeAudioDurationSeconds(audioPath) : null;
+  const wantedDuration = targetDurationSeconds || audioDuration || rawDuration || 30;
+  const totalDuration = Math.min(Math.max(wantedDuration, 3), 21600); // safe guardrail: 3s..6h
   const resolution = getResolution(quality, aspect);
   const fps = targetFps || getFps(quality);
   const bitrate = targetBitrate || getBitrate(quality);
@@ -103,7 +120,7 @@ export async function renderVideo(job) {
   ];
 
   if (audioPath) {
-    args.push('-i', audioPath);
+    args.push('-stream_loop', '-1', '-i', audioPath);
   }
 
   const requestedPreset = (style || '').toLowerCase().replace(/\s+/g, '_');
@@ -173,8 +190,7 @@ export async function renderVideo(job) {
   if (audioPath) {
     const af = [];
     if (audioSettings?.trimStart !== undefined) af.push(`atrim=start=${audioSettings.trimStart}`);
-    if (audioSettings?.trimEnd !== undefined) af.push(`atrim=end=${audioSettings.trimEnd}`);
-    if (audioSettings?.loop) af.push('aloop=loop=-1:size=2e+09');
+    af.push(`atrim=end=${totalDuration}`);
     if (audioSettings?.fadeIn) af.push(`afade=t=in:st=0:d=${audioSettings.fadeIn}`);
     if (audioSettings?.fadeOut) {
       const foStart = Math.max(0, totalDuration - audioSettings.fadeOut);
@@ -182,7 +198,6 @@ export async function renderVideo(job) {
     }
     if (audioSettings?.volume !== undefined) af.push(`volume=${audioSettings.volume}`);
     if (af.length) args.push('-af', af.join(','));
-    args.push('-shortest');
     args.push('-c:a', 'aac');
     args.push('-b:a', '192k');
     args.push('-ar', '48000');
