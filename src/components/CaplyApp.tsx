@@ -198,7 +198,21 @@ export default function CaplyApp() {
       <div className="relative mx-auto flex min-h-screen w-full max-w-[1800px] flex-col overflow-x-hidden px-3 pb-24 pt-3 sm:px-5 lg:px-8 lg:pb-8">
         <section className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
-            <img src="/caply-logo.svg" alt="Caply logo" className="h-8 w-8 rounded-lg shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/favicon.svg"; }} />
+            <svg className="h-8 w-8 shrink-0 rounded-lg" viewBox="0 0 512 512" aria-label="Caply logo" role="img">
+              <defs>
+                <linearGradient id="caplyBg" x1="64" y1="32" x2="448" y2="480" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="#1F2937" />
+                  <stop offset="1" stopColor="#7C3AED" />
+                </linearGradient>
+                <linearGradient id="caplyC" x1="150" y1="120" x2="370" y2="390" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="#67E8F9" />
+                  <stop offset="1" stopColor="#C084FC" />
+                </linearGradient>
+              </defs>
+              <rect x="32" y="32" width="448" height="448" rx="104" fill="url(#caplyBg)" />
+              <path d="M344 156C312 132 277 120 236 120C153 120 96 177 96 256C96 335 153 392 236 392C277 392 312 380 344 356" stroke="url(#caplyC)" strokeWidth="44" strokeLinecap="round" />
+              <circle cx="352" cy="252" r="30" fill="#F8FAFC" />
+            </svg>
             <div className="min-w-0">
               <p className="truncate text-sm font-black">Caply</p>
               <p className="truncate text-[11px] text-slate-400">Smart story creator</p>
