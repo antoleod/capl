@@ -16,6 +16,7 @@ export type RenderRequest = {
   audioPath: string | null;
   durationLabel: string;
   targetDurationSeconds?: number;
+  platform?: string;
   style: string;
   quality: string;
   aspect: string;
@@ -101,9 +102,7 @@ export const uploadAudio = async (
 };
 
 export const startRender = async (config: RenderRequest) => {
-  if (import.meta.env.DEV) {
-    console.log("[Caply] startRender payload", config);
-  }
+  if (import.meta.env.DEV) console.log("[Caply] payload", JSON.stringify(config, null, 2));
   const resp = await fetch(`${API_BASE}/render`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

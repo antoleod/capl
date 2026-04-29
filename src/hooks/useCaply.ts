@@ -17,6 +17,11 @@ const MODE_ASPECT_MAP = {
   youtube: "16:9",
   instagram: "1:1",
 } as const;
+const aspectToPlatform = (aspect: string) => {
+  if (aspect === "16:9") return "youtube";
+  if (aspect === "1:1") return "instagram";
+  return "tiktok";
+};
 
 export function useCaply() {
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -391,8 +396,14 @@ export function useCaply() {
 
   useEffect(() => {
     if (!jobId || phase !== "rendering") return;
-
+    const startedAt = Date.now();
     const interval = setInterval(async () => {
+      if (Date.now() - startedAt > 20 * 60 * 1000) {
+        clearInterval(interval);
+        setPhase("error");
+        setErrorMsg("Render stalled. Check server logs.");
+        return;
+      }
       const done = await pollStatus(jobId);
       if (done) clearInterval(interval);
     }, 2000);
@@ -450,6 +461,7 @@ export function useCaply() {
         audioPath,
         durationLabel,
         targetDurationSeconds: Math.max(3, durationToSeconds(durationLabel)),
+        platform: aspectToPlatform(aspect),
         style,
         quality,
         aspect,
@@ -544,6 +556,7 @@ export function useCaply() {
         audioPath,
         durationLabel,
         targetDurationSeconds: Math.max(3, durationToSeconds(durationLabel)),
+        platform: mode,
         style: nextStyle,
         quality,
         aspect: modeAspect,

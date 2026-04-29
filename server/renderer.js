@@ -87,15 +87,27 @@ async function probeAudioDurationSeconds(audioPath) {
 }
 
 export async function renderVideo(job) {
-  const { id, imagePaths, audioPath, durationLabel, targetDurationSeconds, quality, aspect, audioSettings, targetFps, targetBitrate, transition, style } = job;
+  const { id, imagePaths, audioPath, durationLabel, targetDurationSeconds, platform, quality, aspect, audioSettings, targetFps, targetBitrate, transition, style } = job;
   const rawDuration = parseDurationToSeconds(durationLabel);
   const audioDuration = audioPath ? await probeAudioDurationSeconds(audioPath) : null;
   const wantedDuration = targetDurationSeconds || audioDuration || rawDuration || 30;
   const totalDuration = Math.min(Math.max(wantedDuration, 3), 21600); // safe guardrail: 3s..6h
-  const resolution = getResolution(quality, aspect);
+  const qualityMap = {
+    '720p': { w: 1280, h: 720 },
+    '1080p': { w: 1920, h: 1080 },
+    '2K': { w: 2560, h: 1440 },
+    '4K': { w: 3840, h: 2160 },
+  };
+  const qKey = qualityMap[quality] ? quality : '1080p';
+  let baseRes = qualityMap[qKey];
+  const isVertical = aspect === '9:16' || platform === 'tiktok';
+  if (isVertical) baseRes = { w: baseRes.h, h: baseRes.w };
+  const resolution = { width: baseRes.w, height: baseRes.h };
   const fps = targetFps || getFps(quality);
   const bitrate = targetBitrate || getBitrate(quality);
   const perImage = imagePaths.length > 0 ? totalDuration / imagePaths.length : totalDuration;
+  console.log('[Renderer] duration:', { targetDurationSeconds, rawDuration, audioDuration, totalDuration });
+  console.log('[Renderer] render params:', { perImageDuration: perImage, resolution, fps, quality, aspect, platform });
   const output = join(OUTPUT_DIR, `${id}.mp4`);
 
   // Ensure concat directory exists
@@ -120,7 +132,7 @@ export async function renderVideo(job) {
   ];
 
   if (audioPath) {
-    args.push('-stream_loop', '-1', '-i', audioPath);
+    args.push('-stream_loop', '-1', '-i', audioPath, '-t', String(totalDuration));
   }
 
   const requestedPreset = (style || '').toLowerCase().replace(/\s+/g, '_');
@@ -204,6 +216,7 @@ export async function renderVideo(job) {
   }
 
   args.push(output);
+  console.log('[Renderer] ffmpeg args:', args);
 
   const onProgressCallback = (pct) => {
     jobStatus.set(id, { status: 'processing', progress: pct });

@@ -129,6 +129,7 @@ app.use('/outputs', express.static(OUTPUT_DIR));
 app.post('/render', async (req, res) => {
   const jobId = uuidv4();
   const config = req.body;
+  console.log('[Backend] /render payload:', config);
 
   try {
     // Reconstruir rutas absolutas para el renderizador
