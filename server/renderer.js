@@ -73,7 +73,8 @@ export async function runFFmpeg(args, jobId, totalDuration, onProgressCallback) 
 
 export async function renderVideo(job) {
   const { id, imagePaths, audioPath, durationLabel, quality, aspect, audioSettings, targetFps, targetBitrate, transition, style } = job;
-  const totalDuration = parseDurationToSeconds(durationLabel);
+  const rawDuration = parseDurationToSeconds(durationLabel);
+  const totalDuration = Math.min(Math.max(rawDuration || 3, 3), 21600); // safe guardrail: 3s..6h
   const resolution = getResolution(quality, aspect);
   const fps = targetFps || getFps(quality);
   const bitrate = targetBitrate || getBitrate(quality);

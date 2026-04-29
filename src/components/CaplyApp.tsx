@@ -37,7 +37,9 @@ export default function CaplyApp() {
 
   const customDurationSeconds = Math.max(0, toSeconds(Number(customDurationValue || 0), customDurationUnit));
   const isCustomDuration = durationPreset === "Custom";
-  const isCustomDurationValid = customDurationSeconds >= 5 && customDurationSeconds <= 7200;
+  const isCustomDurationValid = customDurationSeconds >= 3;
+  const isLongDuration = customDurationSeconds > 7200;
+  const isVeryHeavyDuration = customDurationSeconds > 7200 && (qualityPreset === "4k" || qualityPreset === "8k");
 
   const finalDurationLabel = (() => {
     if (!isCustomDuration) return durationPreset === "Auto" ? "Auto" : durationPreset;
@@ -50,6 +52,13 @@ export default function CaplyApp() {
     if (m) parts.push(`${m}m`);
     if (s || parts.length === 0) parts.push(`${s}s`);
     return parts.join(" ");
+  })();
+
+  const renderWeight = (() => {
+    if (!isCustomDuration) return "medium";
+    if (customDurationSeconds >= 7200 || qualityPreset === "8k") return "heavy";
+    if (customDurationSeconds >= 1800 || qualityPreset === "4k" || qualityPreset === "2k") return "medium";
+    return "small";
   })();
 
   const visualMedia = useMemo(() => [...caply.photos, ...(caply.videos || [])], [caply.photos, caply.videos]);
@@ -223,7 +232,9 @@ export default function CaplyApp() {
                           <option value="hours">hours</option>
                         </select>
                       </div>
-                      {!isCustomDurationValid && <p className="text-[10px] text-amber-300">Custom duration must be between 5s and 2h.</p>}
+                      {!isCustomDurationValid && <p className="text-[10px] text-amber-300">Minimum duration is 3 seconds.</p>}
+                      {isLongDuration && <p className="text-[10px] text-amber-300">Long video, rendering may be slow.</p>}
+                      {isVeryHeavyDuration && <p className="text-[10px] text-orange-300">High quality + long duration may take time.</p>}
                     </div>
                   )}
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -243,6 +254,7 @@ export default function CaplyApp() {
                       <option value="8k">8K</option>
                     </select>
                   </div>
+                  <p className="text-[10px] text-slate-400">Estimated render weight: <span className="uppercase text-slate-200">{renderWeight}</span></p>
                 </div>
               </div>
 
