@@ -90,7 +90,10 @@ export async function renderVideo(job) {
   const { id, imagePaths, audioPath, durationLabel, targetDurationSeconds, platform, quality, aspect, audioSettings, targetFps, targetBitrate, transition, style } = job;
   const rawDuration = parseDurationToSeconds(durationLabel);
   const audioDuration = audioPath ? await probeAudioDurationSeconds(audioPath) : null;
-  const wantedDuration = targetDurationSeconds || audioDuration || rawDuration || 30;
+  const validTargetDuration = Number.isFinite(Number(targetDurationSeconds)) && Number(targetDurationSeconds) > 0
+    ? Number(targetDurationSeconds)
+    : null;
+  const wantedDuration = validTargetDuration || audioDuration || rawDuration || 30;
   const totalDuration = Math.min(Math.max(wantedDuration, 3), 21600); // safe guardrail: 3s..6h
   const qualityMap = {
     '720p': { w: 1280, h: 720 },
@@ -106,7 +109,7 @@ export async function renderVideo(job) {
   const fps = targetFps || getFps(quality);
   const bitrate = targetBitrate || getBitrate(quality);
   const perImage = imagePaths.length > 0 ? totalDuration / imagePaths.length : totalDuration;
-  console.log('[Renderer] duration:', { targetDurationSeconds, rawDuration, audioDuration, totalDuration });
+  console.log('[Renderer] duration:', { targetDurationSeconds: validTargetDuration, rawDuration, audioDuration, totalDuration });
   console.log('[Renderer] render params:', { perImageDuration: perImage, resolution, fps, quality, aspect, platform });
   const output = join(OUTPUT_DIR, `${id}.mp4`);
 

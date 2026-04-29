@@ -20,6 +20,7 @@ type TimelineProps = {
   onVideoRemove?: (id: string) => void;
   onAudioRemove?: () => void;
   mismatchIds?: string[];
+  finalDurationSeconds?: number;
 };
 
 const formatTime = (sec: number) => {
@@ -31,7 +32,7 @@ const formatTime = (sec: number) => {
   return `${m}:${String(rs).padStart(2, "0")}`;
 };
 
-export function Timeline({ photos, videos, audio, durationLabel, onPhotoRemove, onVideoRemove, onAudioRemove, mismatchIds = [] }: TimelineProps) {
+export function Timeline({ photos, videos, audio, durationLabel, onPhotoRemove, onVideoRemove, onAudioRemove, mismatchIds = [], finalDurationSeconds }: TimelineProps) {
   const [pxPerSec, setPxPerSec] = useState(28);
   const [audioDurationSec, setAudioDurationSec] = useState<number | null>(null);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
@@ -68,8 +69,9 @@ export function Timeline({ photos, videos, audio, durationLabel, onPhotoRemove, 
       ...videos.map((v) => ({ id: v.id, name: v.name, type: "video" as const, url: v.url })),
     ];
 
+    const target = finalDurationSeconds && finalDurationSeconds > 0 ? finalDurationSeconds : null;
     const hasAudioDuration = !!audioDurationSec && audioDurationSec > 0;
-    const perClipDuration = hasAudioDuration && base.length > 0 ? audioDurationSec / base.length : null;
+    const perClipDuration = target && base.length > 0 ? target / base.length : hasAudioDuration && base.length > 0 ? audioDurationSec / base.length : null;
 
     let startSec = 0;
     return base.map((clip) => {
@@ -78,13 +80,14 @@ export function Timeline({ photos, videos, audio, durationLabel, onPhotoRemove, 
       startSec += durationSec;
       return next;
     });
-  }, [photos, videos, audioDurationSec]);
+  }, [photos, videos, audioDurationSec, finalDurationSeconds]);
 
   const totalDuration = useMemo(() => {
     const clipsSec = clips.reduce((sum, clip) => sum + clip.durationSec, 0);
+    if (finalDurationSeconds && finalDurationSeconds > 0) return Math.max(finalDurationSeconds, 10);
     if (audioDurationSec && audioDurationSec > 0) return Math.max(audioDurationSec, clipsSec, 10);
     return Math.max(clipsSec, 10);
-  }, [clips, audioDurationSec, durationLabel]);
+  }, [clips, audioDurationSec, durationLabel, finalDurationSeconds]);
 
   const timelineWidth = Math.max(720, Math.round(totalDuration * pxPerSec));
   const tickStepSec = pxPerSec >= 52 ? 1 : pxPerSec >= 28 ? 2 : 4;
@@ -176,12 +179,12 @@ export function Timeline({ photos, videos, audio, durationLabel, onPhotoRemove, 
                 {!audio ? (
                   <div className="flex h-[44px] items-center rounded-lg border border-dashed border-white/15 px-3 text-xs text-slate-500">No audio selected.</div>
                 ) : (
-                  <div className="relative h-[44px] overflow-hidden rounded-lg border border-cyan-300/20 bg-cyan-400/10" style={{ width: Math.max(140, Math.round((audioDurationSec || totalDuration) * pxPerSec)) }}>
+                  <div className="relative h-[44px] overflow-hidden rounded-lg border border-cyan-300/20 bg-cyan-400/10" style={{ width: Math.max(140, Math.round((finalDurationSeconds || audioDurationSec || totalDuration) * pxPerSec)) }}>
                     <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(34,211,238,0.18)_0px,rgba(34,211,238,0.18)_3px,transparent_3px,transparent_12px)]" />
                     <div className="relative flex h-full items-center justify-between px-3">
                       <div className="min-w-0">
                         <p className="truncate text-[11px] font-semibold text-cyan-100">{audio.name}</p>
-                        <p className="text-[10px] text-cyan-200/80">{audioDurationSec ? formatTime(audioDurationSec) : "Full mix"}</p>
+                        <p className="text-[10px] text-cyan-200/80">{finalDurationSeconds ? `${Math.round(finalDurationSeconds)}s` : audioDurationSec ? formatTime(audioDurationSec) : "Full mix"}</p>
                       </div>
                       <button type="button" onClick={() => onAudioRemove?.()} className="grid h-6 w-6 place-items-center rounded-md bg-black/40 text-cyan-50" aria-label="Remove audio">
                         <X className="h-3.5 w-3.5" />

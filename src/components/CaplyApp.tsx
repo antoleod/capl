@@ -86,8 +86,20 @@ export default function CaplyApp() {
   };
 
   const resolvedDurationLabel = isCustomDuration ? `${Math.max(3, Math.floor(customDurationSeconds))}${customDurationUnit === "hours" ? "h" : customDurationUnit === "minutes" ? "m" : "s"}` : durationPreset === "Auto" ? caply.durationLabel : durationPreset.replace("min", "m");
+  const resolvedDurationSeconds = isCustomDuration
+    ? Math.max(3, Math.floor(customDurationSeconds))
+    : durationPreset === "30min" ? 1800
+    : durationPreset === "1h" ? 3600
+    : durationPreset === "2h" ? 7200
+    : durationPreset === "15min" ? 900
+    : durationPreset === "15s" ? 15
+    : durationPreset === "30s" ? 30
+    : durationPreset === "60s" ? 60
+    : 30;
 
   const runAutoCreateWithSelections = () => {
+    console.log("[Caply UI] selectedDurationLabel", resolvedDurationLabel);
+    console.log("[Caply UI] finalDurationSeconds", resolvedDurationSeconds);
     const engine = exportMode === "preview"
       ? { quality: "720p", bitrate: "4M", fps: 24 }
       : mapQualityToEngine(qualityPreset);
@@ -275,6 +287,7 @@ export default function CaplyApp() {
               videos={caply.videos || []}
               audio={caply.audio}
               durationLabel={caply.durationLabel}
+              finalDurationSeconds={resolvedDurationSeconds}
               onPhotoRemove={caply.removePhoto}
               onVideoRemove={caply.removeVideo}
               onAudioRemove={caply.removeAudio}
