@@ -17,6 +17,7 @@ export type RenderRequest = {
   durationLabel: string;
   targetDurationSeconds?: number;
   platform?: string;
+  renderMode?: "preview" | "final";
   style: string;
   quality: string;
   aspect: string;

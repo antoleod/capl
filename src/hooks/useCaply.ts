@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE, downloadBlob, getStatus, startRender, uploadAudio, uploadPhotos } from "../services/api";
 import type { CustomUnit, MediaAudio, MediaPhoto, Phase } from "../types/caply";
 import { durationToSeconds, parseDuration } from "../utils/format";
@@ -71,7 +71,7 @@ export function useCaply() {
   );
 
   const advancedSummary = useMemo(
-    () => `${quality} • ${fps}fps • ${bitrate}`,
+    () => `${quality} â€¢ ${fps}fps â€¢ ${bitrate}`,
     [quality, fps, bitrate]
   );
 
@@ -196,8 +196,8 @@ export function useCaply() {
 
   const reorderMedia = useCallback((oldIndex: number, newIndex: number) => {
     // Nota: Para implementar reordenamiento real entre fotos y videos 
-    // se necesitaría unificar los estados, pero para esta mejora UI 
-    // exponemos la capacidad de gestión.
+    // se necesitarÃ­a unificar los estados, pero para esta mejora UI 
+    // exponemos la capacidad de gestiÃ³n.
     console.log(`Reordering from ${oldIndex} to ${newIndex}`);
   }, []);
 
@@ -378,9 +378,13 @@ export function useCaply() {
       }
 
       if (data?.status === "processing") {
-        const serverProgress = typeof data.progress === "number" ? data.progress : 0;
-        setProgress(Math.max(progress, serverProgress));
-        setStep(`Rendering... ${Math.round(serverProgress)}%`);
+        if (typeof data.progress === "number") {
+          const serverProgress = Math.max(0, Math.min(100, data.progress));
+          setProgress(serverProgress);
+          setStep(`Rendering... ${Math.round(serverProgress)}%`);
+        } else {
+          setStep("Rendering...");
+        }
       }
     } catch {
       retryCountRef.current += 1;
@@ -392,13 +396,18 @@ export function useCaply() {
     }
 
     return false;
-  }, [progress]);
+  }, []);
 
   useEffect(() => {
     if (!jobId || phase !== "rendering") return;
+    const longRender = totalSeconds > 1800;
+    const maxRenderMs = longRender
+      ? Math.max(60 * 60 * 1000, totalSeconds * 1000 * 2)
+      : 20 * 60 * 1000;
+    const pollEveryMs = longRender ? 3000 : 2000;
     const startedAt = Date.now();
     const interval = setInterval(async () => {
-      if (Date.now() - startedAt > 20 * 60 * 1000) {
+      if (Date.now() - startedAt > maxRenderMs) {
         clearInterval(interval);
         setPhase("error");
         setErrorMsg("Render stalled. Check server logs.");
@@ -406,10 +415,10 @@ export function useCaply() {
       }
       const done = await pollStatus(jobId);
       if (done) clearInterval(interval);
-    }, 2000);
+    }, pollEveryMs);
 
     return () => clearInterval(interval);
-  }, [jobId, phase, pollStatus]);
+  }, [jobId, phase, pollStatus, totalSeconds]);
 
   const generate = useCallback(async () => {
     if (!photos.length) return;
@@ -422,7 +431,7 @@ export function useCaply() {
 
     try {
       setPhase("rendering");
-      setStep("Uploading photos…");
+      setStep("Uploading photosâ€¦");
       setUploadProgress(5);
 
       const sessionId = crypto.randomUUID();
@@ -436,14 +445,14 @@ export function useCaply() {
       let audioPath: string | null = null;
 
       if (audio) {
-        setStep("Uploading audio…");
+        setStep("Uploading audioâ€¦");
         audioPath = await uploadAudio(audio.file, sessionId, (pct) => setUploadProgress(pct));
       }
 
       setIsUploadSuccess(true);
       setUploadProgress(null);
-      setStep("Starting render engine…");
-      setProgress(45);
+      setStep("Preparing...");
+      setProgress(1);
 
       const audioSettings = audio
         ? {
@@ -472,8 +481,8 @@ export function useCaply() {
       });
 
       setJobId(nextJobId);
-      setStep("Rendering video…");
-      setProgress(50);
+      setStep("Rendering...");
+      setProgress(1);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Export failed. Try lower quality or shorter duration.";
       setUploadProgress(null);
@@ -501,7 +510,11 @@ export function useCaply() {
     audioVolume,
   ]);
 
-  const autoCreate = useCallback(async (mode: keyof typeof MODE_ASPECT_MAP, nextStyle = "Auto") => {
+  const autoCreate = useCallback(async (
+    mode: keyof typeof MODE_ASPECT_MAP,
+    nextStyle = "Auto",
+    options?: { createType?: "sleep" | "relax" | "short" | "story"; durationLabel?: string; targetDurationSeconds?: number; renderMode?: "preview" | "final" }
+  ) => {
     const modeAspect = MODE_ASPECT_MAP[mode] ?? "9:16";
     setAspect(modeAspect);
     setStyle(nextStyle);
@@ -537,8 +550,8 @@ export function useCaply() {
 
       setIsUploadSuccess(true);
       setUploadProgress(null);
-      setStep("Starting render engine...");
-      setProgress(45);
+      setStep("Preparing...");
+      setProgress(1);
 
       const audioSettings = audio
         ? {
@@ -551,11 +564,17 @@ export function useCaply() {
           }
         : undefined;
 
+      const finalDurationLabel = options?.durationLabel || durationLabel;
+      const finalDurationSeconds = options?.targetDurationSeconds ?? Math.max(3, durationToSeconds(finalDurationLabel));
+      if (options?.createType === "sleep" && finalDurationSeconds < 300) {
+        throw new Error("Invalid sleep duration: expected minutes/hours, got seconds");
+      }
+
       const nextJobId = await startRender({
         imagePaths,
         audioPath,
-        durationLabel,
-        targetDurationSeconds: Math.max(3, durationToSeconds(durationLabel)),
+        durationLabel: finalDurationLabel,
+        targetDurationSeconds: finalDurationSeconds,
         platform: mode,
         style: nextStyle,
         quality,
@@ -567,8 +586,8 @@ export function useCaply() {
       });
 
       setJobId(nextJobId);
-      setStep("Rendering video...");
-      setProgress(50);
+      setStep("Rendering...");
+      setProgress(1);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Export failed. Try lower quality or shorter duration.";
       setUploadProgress(null);
@@ -594,7 +613,7 @@ export function useCaply() {
     if (!outputUrl) return;
 
     try {
-      setStep("Downloading…");
+      setStep("Downloadingâ€¦");
       const blob = await downloadBlob(outputUrl);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");

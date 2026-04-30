@@ -130,6 +130,7 @@ app.post('/render', async (req, res) => {
   const jobId = uuidv4();
   const config = req.body;
   console.log('[Backend] /render payload:', config);
+  console.log('[Caply Server] targetDurationSeconds', req.body.targetDurationSeconds);
 
   try {
     // Reconstruir rutas absolutas para el renderizador

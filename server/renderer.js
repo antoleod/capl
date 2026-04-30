@@ -1,10 +1,7 @@
-import { spawn } from 'child_process';
-import { promises as fs } from 'fs';
-import { dirname, join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
+﻿import { spawn } from 'child_process';
+import { join } from 'path';
 import ffmpegStatic from 'ffmpeg-static';
-import { UPLOAD_DIR, OUTPUT_DIR } from './constants.js';
-import { parseDurationToSeconds, getResolution, getFps, getBitrate } from './utils.js';
+import { OUTPUT_DIR } from './constants.js';
 
 const FFMPEG_PATH = ffmpegStatic || 'ffmpeg';
 const DEFAULT_EFFECT_PRESET = 'baby_soft';
@@ -31,19 +28,48 @@ const EFFECT_PRESETS = {
     vignette: 'vignette=PI/5.5',
     zoom: "zoompan=z='if(lte(on,1),1.0,min(1.05,zoom+0.0005))':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}:fps={fps}",
   },
-  calm_sleep: {
-    tone: 'eq=brightness=0.02:contrast=1.02:saturation=0.92',
-    blur: 'gblur=sigma=0.8',
-    warmth: 'colorbalance=rs=0.03:gs=0.02:bs=-0.02',
-    vignette: 'vignette=PI/7',
-    zoom: "zoompan=z='if(lte(on,1),1.0,min(1.04,zoom+0.0004))':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}:fps={fps}",
-  },
+};
+
+const QUALITY_MAP = {
+  '720p': { w: 1280, h: 720 },
+  '1080p': { w: 1920, h: 1080 },
+  '2K': { w: 2560, h: 1440 },
+  '4K': { w: 3840, h: 2160 },
+  '8K': { w: 7680, h: 4320 },
+};
+
+const ENCODE_PROFILE_MAP = {
+  '720p': { preset: 'veryfast', crf: 23 },
+  '1080p': { preset: 'veryfast', crf: 22 },
+  '2K': { preset: 'veryfast', crf: 23 },
+  '4K': { preset: 'veryfast', crf: 23 },
+  '8K': { preset: 'veryfast', crf: 23 },
 };
 
 export const activeJobs = new Map();
-export const jobStatus = new Map(); // jobId -> { status: 'processing'|'done'|'error', progress?: number, error?: string }
+export const jobStatus = new Map();
 
-export async function runFFmpeg(args, jobId, totalDuration, onProgressCallback) {
+function getResolution(quality, aspect, platform) {
+  const qKey = QUALITY_MAP[quality] ? quality : '1080p';
+  let base = QUALITY_MAP[qKey];
+  const vertical = aspect === '9:16' || platform === 'tiktok';
+  if (vertical) base = { w: base.h, h: base.w };
+  return { width: base.w, height: base.h };
+}
+
+function parseDurationLabelSeconds(label) {
+  const text = String(label || '').trim().toLowerCase();
+  const m = text.match(/^(\d+(?:\.\d+)?)\s*([smh])$/);
+  if (!m) return 30;
+  const v = Number(m[1]);
+  const u = m[2];
+  if (!Number.isFinite(v) || v <= 0) return 30;
+  if (u === 'h') return v * 3600;
+  if (u === 'm') return v * 60;
+  return v;
+}
+
+function runFFmpeg(args, jobId, totalDuration, onProgressCallback) {
   return new Promise((resolve, reject) => {
     const proc = spawn(FFMPEG_PATH, ['-y', ...args]);
     let stderr = '';
@@ -53,178 +79,158 @@ export async function runFFmpeg(args, jobId, totalDuration, onProgressCallback) 
       const s = d.toString();
       stderr += s;
       const m = s.match(/time=\s*(\d+):(\d+):(\d+\.\d+)/);
-      if (m && onProgressCallback && totalDuration > 0) {
-        const sec = parseFloat(m[1]) * 3600 + parseFloat(m[2]) * 60 + parseFloat(m[3]);
-        const pct = Math.min(95, Math.round((sec / totalDuration) * 100));
-        if (pct > lastPct) { lastPct = pct; onProgressCallback(pct); }
+      if (m && totalDuration > 0 && onProgressCallback) {
+        const sec = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+        const pct = Math.max(0, Math.min(99, Math.round((sec / totalDuration) * 100)));
+        if (pct >= lastPct) {
+          lastPct = pct;
+          onProgressCallback(pct);
+        }
       }
     });
 
     proc.on('close', (code) => {
       activeJobs.delete(jobId);
       if (code === 0) resolve(stderr);
-      else reject(new Error(`FFmpeg exited ${code}. ${stderr.slice(-400)}`));
+      else reject(new Error(`FFmpeg exited ${code}. ${stderr.slice(-800)}`));
     });
 
-    proc.on('error', (e) => { activeJobs.delete(jobId); reject(e); });
+    proc.on('error', (e) => {
+      activeJobs.delete(jobId);
+      reject(e);
+    });
+
     activeJobs.set(jobId, proc);
   });
 }
 
-async function probeAudioDurationSeconds(audioPath) {
-  return new Promise((resolve) => {
-    const proc = spawn(FFMPEG_PATH, ['-i', audioPath, '-f', 'null', '-']);
-    let stderr = '';
-    proc.stderr.on('data', (d) => { stderr += d.toString(); });
-    proc.on('close', () => {
-      const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
-      if (!m) return resolve(null);
-      const sec = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
-      resolve(Number.isFinite(sec) && sec > 0 ? sec : null);
-    });
-    proc.on('error', () => resolve(null));
-  });
-}
+export async function renderVideo(options) {
+  const {
+    id,
+    imagePaths = [],
+    audioPath,
+    durationLabel,
+    targetDurationSeconds,
+    platform,
+    quality,
+    aspect,
+    audioSettings,
+    targetFps,
+    targetBitrate,
+    style,
+    renderMode,
+  } = options;
 
-export async function renderVideo(job) {
-  const { id, imagePaths, audioPath, durationLabel, targetDurationSeconds, platform, quality, aspect, audioSettings, targetFps, targetBitrate, transition, style } = job;
-  const rawDuration = parseDurationToSeconds(durationLabel);
-  const audioDuration = audioPath ? await probeAudioDurationSeconds(audioPath) : null;
-  const validTargetDuration = Number.isFinite(Number(targetDurationSeconds)) && Number(targetDurationSeconds) > 0
-    ? Number(targetDurationSeconds)
-    : null;
-  const wantedDuration = validTargetDuration || audioDuration || rawDuration || 30;
-  const totalDuration = Math.min(Math.max(wantedDuration, 3), 21600); // safe guardrail: 3s..6h
-  const qualityMap = {
-    '720p': { w: 1280, h: 720 },
-    '1080p': { w: 1920, h: 1080 },
-    '2K': { w: 2560, h: 1440 },
-    '4K': { w: 3840, h: 2160 },
-  };
-  const qKey = qualityMap[quality] ? quality : '1080p';
-  let baseRes = qualityMap[qKey];
-  const isVertical = aspect === '9:16' || platform === 'tiktok';
-  if (isVertical) baseRes = { w: baseRes.h, h: baseRes.w };
-  const resolution = { width: baseRes.w, height: baseRes.h };
-  const fps = targetFps || getFps(quality);
-  const bitrate = targetBitrate || getBitrate(quality);
-  const perImage = imagePaths.length > 0 ? totalDuration / imagePaths.length : totalDuration;
-  console.log('[Renderer] duration:', { targetDurationSeconds: validTargetDuration, rawDuration, audioDuration, totalDuration });
-  console.log('[Renderer] render params:', { perImageDuration: perImage, resolution, fps, quality, aspect, platform });
-  const output = join(OUTPUT_DIR, `${id}.mp4`);
+  const target = Number(targetDurationSeconds);
+  const parsedDuration = parseDurationLabelSeconds(durationLabel);
+  const finalDurationSeconds = Number.isFinite(target) && target > 0 ? target : parsedDuration;
 
-  // Ensure concat directory exists
-  const concatDir = join(UPLOAD_DIR, id);
-  if (!existsSync(concatDir)) mkdirSync(concatDir, { recursive: true });
-
-  // Write concat demuxer file for image sequence
-  const concatFile = join(concatDir, 'concat.txt');
-  // FFmpeg concat demuxer: duration after each file; repeat last file+duration so FFmpeg knows total duration
-  let lines = '';
-  imagePaths.forEach((p) => {
-    lines += `file '${p.replace(/'/g, "'\\''")}'\nduration ${perImage.toFixed(3)}\n`;
-  });
-  // Append last file again with duration so total is correct
-  if (imagePaths.length > 0) {
-    lines += `file '${imagePaths[imagePaths.length - 1].replace(/'/g, "'\\''")}'\nduration ${perImage.toFixed(3)}\n`;
-  }
-  await fs.writeFile(concatFile, lines);
-
-  const args = [
-    '-f', 'concat', '-safe', '0', '-i', concatFile,
-  ];
-
-  if (audioPath) {
-    args.push('-stream_loop', '-1', '-i', audioPath, '-t', String(totalDuration));
-  }
+  const fps = Number(targetFps) > 0 ? Number(targetFps) : 30;
+  const bitrate = targetBitrate || '';
+  const resolution = getResolution(quality, aspect, platform);
+  const qualityKey = QUALITY_MAP[quality] ? quality : '1080p';
+  const baseEncode = ENCODE_PROFILE_MAP[qualityKey] || ENCODE_PROFILE_MAP['1080p'];
+  const isPreview = renderMode === 'preview';
+  const LONG_RENDER_FAST_MODE = finalDurationSeconds > 600;
+  const encodePreset = isPreview ? 'ultrafast' : baseEncode.preset;
+  const encodeCrf = isPreview ? 26 : baseEncode.crf;
+  const imageCount = Math.max(1, imagePaths.length);
+  const perImageDuration = finalDurationSeconds / imageCount;
 
   const requestedPreset = (style || '').toLowerCase().replace(/\s+/g, '_');
-  const styleAlias = {
-    auto: 'baby_soft',
-    cinematic: 'cinematic',
-    modern: 'modern',
-  };
-  const normalizedPreset = styleAlias[requestedPreset] || requestedPreset;
-  const preset = EFFECT_PRESETS[normalizedPreset] || EFFECT_PRESETS[DEFAULT_EFFECT_PRESET];
-  const zoomExpr = preset.zoom.replace('{w}', String(resolution.width)).replace('{h}', String(resolution.height)).replace('{fps}', String(fps));
+  const styleAlias = { auto: 'baby_soft', cinematic: 'cinematic', modern: 'modern' };
+  const preset = EFFECT_PRESETS[styleAlias[requestedPreset] || requestedPreset] || EFFECT_PRESETS[DEFAULT_EFFECT_PRESET];
+  const zoomExpr = preset.zoom
+    .replace('{w}', String(resolution.width))
+    .replace('{h}', String(resolution.height))
+    .replace('{fps}', String(fps));
 
-  let builtVideo = false;
-  if (imagePaths.length > 0) {
-    const fadeDur = Math.min(0.5, Math.max(0.15, perImage * 0.2));
-    const canCrossfade = transition !== 'none' && imagePaths.length > 1 && perImage > fadeDur * 2;
-    const filterParts = [];
+  const output = join(OUTPUT_DIR, `${id}.mp4`);
+  const args = [];
 
-    for (let i = 0; i < imagePaths.length; i += 1) {
-      const start = i * perImage;
-      const end = start + perImage;
-      const clipFx = [
-        `trim=start=${start.toFixed(3)}:end=${end.toFixed(3)}`,
-        'setpts=PTS-STARTPTS',
-        zoomExpr,
-        preset.tone,
-        preset.blur,
-        preset.warmth,
-        preset.vignette,
-      ];
-      if (i === 0) clipFx.push(`fade=t=in:st=0:d=${fadeDur.toFixed(3)}`);
-      if (i === imagePaths.length - 1) clipFx.push(`fade=t=out:st=${Math.max(0.01, perImage - fadeDur).toFixed(3)}:d=${fadeDur.toFixed(3)}`);
-
-      filterParts.push(`[0:v]${clipFx.join(',')}[v${i}]`);
-    }
-
-    if (canCrossfade) {
-      let chainLabel = 'v0';
-      for (let i = 1; i < imagePaths.length; i += 1) {
-        const outLabel = i === imagePaths.length - 1 ? 'vout' : `vx${i}`;
-        const offset = (perImage * i) - (fadeDur * i);
-        filterParts.push(`[${chainLabel}][v${i}]xfade=transition=fade:duration=${fadeDur.toFixed(3)}:offset=${Math.max(0, offset).toFixed(3)}[${outLabel}]`);
-        chainLabel = outLabel;
-      }
-    } else {
-      filterParts.push(`[v${imagePaths.length - 1}]copy[vout]`);
-    }
-
-    args.push('-filter_complex', filterParts.join(';'));
-    args.push('-map', '[vout]');
-    builtVideo = true;
+  for (const imagePath of imagePaths) {
+    args.push('-loop', '1', '-t', String(perImageDuration), '-i', imagePath);
   }
 
-  if (!builtVideo) {
-    const vFilter = `fps=${fps},scale=${resolution.width}:${resolution.height}:force_original_aspect_ratio=decrease,pad=${resolution.width}:${resolution.height}:(ow-iw)/2:(oh-ih)/2:black,format=yuv420p`;
-    args.push('-vf', vFilter);
+  const audioInputIndex = imagePaths.length;
+  if (audioPath) {
+    args.push('-stream_loop', '-1', '-i', audioPath);
   }
 
-  args.push('-r', String(fps));
-  args.push('-c:v', 'libx264');
-  args.push('-b:v', bitrate);
-  args.push('-preset', 'fast');
-  args.push('-pix_fmt', 'yuv420p');
-  args.push('-movflags', '+faststart');
-  args.push('-t', String(totalDuration));
+  const filterParts = [];
+  for (let i = 0; i < imagePaths.length; i += 1) {
+    const clipFx = [
+      `scale=${resolution.width}:${resolution.height}:force_original_aspect_ratio=decrease:flags=lanczos`,
+      `pad=${resolution.width}:${resolution.height}:(ow-iw)/2:(oh-ih)/2`,
+      'setsar=1',
+      'setpts=PTS-STARTPTS',
+      `trim=duration=${perImageDuration}`,
+    ];
+    if (!LONG_RENDER_FAST_MODE && !isPreview) {
+      clipFx.splice(3, 0, zoomExpr, preset.tone, preset.warmth);
+      clipFx.push(preset.blur, preset.vignette);
+    } else if (!isPreview) {
+      clipFx.splice(3, 0, preset.tone);
+    }
+    if (i === 0) clipFx.push('fade=t=in:st=0:d=0.5');
+    if (i === imagePaths.length - 1) clipFx.push(`fade=t=out:st=${Math.max(0, perImageDuration - 0.5)}:d=0.5`);
+    filterParts.push(`[${i}:v]${clipFx.join(',')}[v${i}]`);
+  }
+
+  const concatInputs = Array.from({ length: imagePaths.length }, (_, i) => `[v${i}]`).join('');
+  filterParts.push(`${concatInputs}concat=n=${imagePaths.length}:v=1:a=0[vout]`);
 
   if (audioPath) {
     const af = [];
     if (audioSettings?.trimStart !== undefined) af.push(`atrim=start=${audioSettings.trimStart}`);
-    af.push(`atrim=end=${totalDuration}`);
+    af.push(`atrim=end=${finalDurationSeconds}`);
     if (audioSettings?.fadeIn) af.push(`afade=t=in:st=0:d=${audioSettings.fadeIn}`);
     if (audioSettings?.fadeOut) {
-      const foStart = Math.max(0, totalDuration - audioSettings.fadeOut);
+      const foStart = Math.max(0, finalDurationSeconds - audioSettings.fadeOut);
       af.push(`afade=t=out:st=${foStart}:d=${audioSettings.fadeOut}`);
     }
     if (audioSettings?.volume !== undefined) af.push(`volume=${audioSettings.volume}`);
-    if (af.length) args.push('-af', af.join(','));
+    if (af.length) filterParts.push(`[${audioInputIndex}:a]${af.join(',')}[aout]`);
+  }
+
+  args.push('-filter_complex', filterParts.join(';'));
+  args.push('-map', '[vout]');
+  if (audioPath) args.push('-map', '[aout]');
+
+  args.push('-r', String(fps));
+  args.push('-c:v', 'libx264');
+  args.push('-crf', String(encodeCrf));
+  args.push('-preset', encodePreset);
+  args.push('-tune', 'stillimage');
+  if (bitrate) {
+    args.push('-maxrate', bitrate);
+    args.push('-bufsize', `${bitrate.replace(/[^0-9.]/g, '') || '8'}M`);
+  }
+  args.push('-pix_fmt', 'yuv420p');
+  if (audioPath) {
     args.push('-c:a', 'aac');
     args.push('-b:a', '192k');
     args.push('-ar', '48000');
   }
-
+  args.push('-movflags', '+faststart');
+  args.push('-t', String(finalDurationSeconds));
   args.push(output);
-  console.log('[Renderer] ffmpeg args:', args);
 
-  const onProgressCallback = (pct) => {
+  console.log('[Renderer] image input count', imagePaths.length);
+  console.log('[Renderer] perImageDuration', perImageDuration);
+  console.log('[Renderer] finalDurationSeconds', finalDurationSeconds);
+  console.log('[Renderer] LONG_RENDER_FAST_MODE', LONG_RENDER_FAST_MODE);
+  console.log('[Renderer] renderMode', renderMode || 'final');
+  console.log('[Renderer] quality profile', { quality: qualityKey, preset: encodePreset, crf: encodeCrf });
+  console.log('[Renderer] active filters', LONG_RENDER_FAST_MODE || isPreview ? 'scale,pad,setsar,tone,fade' : 'scale,pad,setsar,zoom,tone,warmth,blur,vignette,fade');
+  console.log('[Renderer] expected duration', finalDurationSeconds);
+  console.log('[Renderer] ffmpeg args', args);
+
+  const onProgress = (pct) => {
     jobStatus.set(id, { status: 'processing', progress: pct });
   };
-  await runFFmpeg(args, id, totalDuration, onProgressCallback);
 
+  await runFFmpeg(args, id, finalDurationSeconds, onProgress);
+  jobStatus.set(id, { status: 'done', progress: 100 });
   return output;
 }

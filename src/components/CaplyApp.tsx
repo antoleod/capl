@@ -16,7 +16,7 @@ export default function CaplyApp() {
   const [mode, setMode] = useState<"tiktok" | "youtube" | "instagram">("tiktok");
   const [openControl, setOpenControl] = useState<"music" | "style" | "export">("music");
   const [videoGoal, setVideoGoal] = useState<"sleep" | "relax" | "short" | "story">("sleep");
-  const [durationPreset, setDurationPreset] = useState("1h");
+  const [selectedDurationId, setSelectedDurationId] = useState("30min");
   const [customDurationValue, setCustomDurationValue] = useState("30");
   const [customDurationUnit, setCustomDurationUnit] = useState<"seconds" | "minutes" | "hours">("minutes");
   const [platformPreset, setPlatformPreset] = useState<"tiktok" | "youtube" | "instagram_1_1" | "instagram_9_16" | "custom">("tiktok");
@@ -25,11 +25,31 @@ export default function CaplyApp() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
 
-  const durationByGoal: Record<"sleep" | "relax" | "short" | "story", string[]> = {
-    sleep: ["30min", "1h", "2h", "Custom"],
-    relax: ["15min", "30min", "1h", "Custom"],
-    short: ["15s", "30s", "60s", "Custom"],
-    story: ["Auto", "30s", "60s", "Custom"],
+  const durationByGoal: Record<"sleep" | "relax" | "short" | "story", Array<{ id: string; label: string; seconds?: number }>> = {
+    sleep: [
+      { id: "30min", label: "30min", seconds: 1800 },
+      { id: "1h", label: "1h", seconds: 3600 },
+      { id: "2h", label: "2h", seconds: 7200 },
+      { id: "custom", label: "Custom" },
+    ],
+    relax: [
+      { id: "15min", label: "15min", seconds: 900 },
+      { id: "30min", label: "30min", seconds: 1800 },
+      { id: "1h", label: "1h", seconds: 3600 },
+      { id: "custom", label: "Custom" },
+    ],
+    short: [
+      { id: "15s", label: "15s", seconds: 15 },
+      { id: "30s", label: "30s", seconds: 30 },
+      { id: "60s", label: "60s", seconds: 60 },
+      { id: "custom", label: "Custom" },
+    ],
+    story: [
+      { id: "auto", label: "Auto" },
+      { id: "30s", label: "30s", seconds: 30 },
+      { id: "60s", label: "60s", seconds: 60 },
+      { id: "custom", label: "Custom" },
+    ],
   };
 
   const toSeconds = (value: number, unit: "seconds" | "minutes" | "hours") => {
@@ -39,13 +59,14 @@ export default function CaplyApp() {
   };
 
   const customDurationSeconds = Math.max(0, toSeconds(Number(customDurationValue || 0), customDurationUnit));
-  const isCustomDuration = durationPreset === "Custom";
+  const selectedDuration = durationByGoal[videoGoal].find((d) => d.id === selectedDurationId) || durationByGoal[videoGoal][0];
+  const isCustomDuration = selectedDuration.id === "custom";
   const isCustomDurationValid = customDurationSeconds >= 3;
   const isLongDuration = customDurationSeconds > 7200;
   const isVeryHeavyDuration = customDurationSeconds > 7200 && (qualityPreset === "4k" || qualityPreset === "8k");
 
   const finalDurationLabel = (() => {
-    if (!isCustomDuration) return durationPreset === "Auto" ? "Auto" : durationPreset;
+    if (!isCustomDuration) return selectedDuration.label;
     const total = Math.floor(customDurationSeconds);
     const h = Math.floor(total / 3600);
     const m = Math.floor((total % 3600) / 60);
@@ -85,21 +106,20 @@ export default function CaplyApp() {
     return "9:16";
   };
 
-  const resolvedDurationLabel = isCustomDuration ? `${Math.max(3, Math.floor(customDurationSeconds))}${customDurationUnit === "hours" ? "h" : customDurationUnit === "minutes" ? "m" : "s"}` : durationPreset === "Auto" ? caply.durationLabel : durationPreset.replace("min", "m");
+  const resolvedDurationLabel = isCustomDuration
+    ? `${Math.max(3, Math.floor(customDurationSeconds))}${customDurationUnit === "hours" ? "h" : customDurationUnit === "minutes" ? "m" : "s"}`
+    : selectedDuration.label;
   const resolvedDurationSeconds = isCustomDuration
     ? Math.max(3, Math.floor(customDurationSeconds))
-    : durationPreset === "30min" ? 1800
-    : durationPreset === "1h" ? 3600
-    : durationPreset === "2h" ? 7200
-    : durationPreset === "15min" ? 900
-    : durationPreset === "15s" ? 15
-    : durationPreset === "30s" ? 30
-    : durationPreset === "60s" ? 60
-    : 30;
+    : selectedDuration.seconds ?? 30;
 
   const runAutoCreateWithSelections = () => {
     console.log("[Caply UI] selectedDurationLabel", resolvedDurationLabel);
     console.log("[Caply UI] finalDurationSeconds", resolvedDurationSeconds);
+    console.log("[Caply Duration] createType", videoGoal);
+    console.log("[Caply Duration] selectedDurationId", selectedDurationId);
+    console.log("[Caply Duration] selectedDuration", selectedDuration);
+    console.log("[Caply Duration] finalDurationSeconds", resolvedDurationSeconds);
     const engine = exportMode === "preview"
       ? { quality: "720p", bitrate: "4M", fps: 24 }
       : mapQualityToEngine(qualityPreset);
@@ -108,24 +128,29 @@ export default function CaplyApp() {
     caply.setFps(engine.fps);
     caply.setAspect(mapPlatformToAspect(platformPreset));
     caply.setDuration(resolvedDurationLabel);
-    caply.autoCreate(mapPlatformToMode(platformPreset), caply.style);
+    caply.autoCreate(mapPlatformToMode(platformPreset), caply.style, {
+      createType: videoGoal,
+      durationLabel: resolvedDurationLabel,
+      targetDurationSeconds: resolvedDurationSeconds,
+      renderMode: exportMode,
+    });
   };
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem("caply_user_prefs");
       if (!raw) return;
-      const parsed = JSON.parse(raw) as Partial<{ videoGoal: "sleep" | "relax" | "short" | "story"; durationPreset: string; platformPreset: "tiktok" | "youtube" | "instagram_1_1" | "instagram_9_16" | "custom"; qualityPreset: "auto" | "720p" | "1080p" | "2k" | "4k" | "8k"; }>;
+      const parsed = JSON.parse(raw) as Partial<{ videoGoal: "sleep" | "relax" | "short" | "story"; selectedDurationId: string; platformPreset: "tiktok" | "youtube" | "instagram_1_1" | "instagram_9_16" | "custom"; qualityPreset: "auto" | "720p" | "1080p" | "2k" | "4k" | "8k"; }>;
       if (parsed.videoGoal) setVideoGoal(parsed.videoGoal);
-      if (parsed.durationPreset) setDurationPreset(parsed.durationPreset);
+      if (parsed.selectedDurationId) setSelectedDurationId(parsed.selectedDurationId);
       if (parsed.platformPreset) setPlatformPreset(parsed.platformPreset);
       if (parsed.qualityPreset) setQualityPreset(parsed.qualityPreset);
     } catch {}
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("caply_user_prefs", JSON.stringify({ videoGoal, durationPreset, platformPreset, qualityPreset }));
-  }, [videoGoal, durationPreset, platformPreset, qualityPreset]);
+    localStorage.setItem("caply_user_prefs", JSON.stringify({ videoGoal, selectedDurationId, platformPreset, qualityPreset }));
+  }, [videoGoal, selectedDurationId, platformPreset, qualityPreset]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -149,6 +174,7 @@ export default function CaplyApp() {
 
   const visualMedia = useMemo(() => [...caply.photos, ...(caply.videos || [])], [caply.photos, caply.videos]);
   const activeVisual = visualMedia[previewIndex % Math.max(visualMedia.length, 1)];
+  const hasRenderedOutput = Boolean(caply.generated && caply.outputUrl);
 
   useEffect(() => {
     if (visualMedia.length <= 1) return;
@@ -324,15 +350,15 @@ export default function CaplyApp() {
                 </button>
                 <div className="mt-2 space-y-2 rounded-xl border border-white/10 bg-white/[0.02] p-2">
                   <div className="flex flex-wrap gap-2">
-                    <button onClick={() => { setVideoGoal("sleep"); setDurationPreset("1h"); }} className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase ${videoGoal === "sleep" ? "bg-cyan-300/20 text-cyan-100" : "bg-white/[0.04] text-slate-300"}`}>Sleep video</button>
-                    <button onClick={() => { setVideoGoal("relax"); setDurationPreset("30min"); }} className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase ${videoGoal === "relax" ? "bg-cyan-300/20 text-cyan-100" : "bg-white/[0.04] text-slate-300"}`}>Relax loop</button>
-                    <button onClick={() => { setVideoGoal("short"); setDurationPreset("30s"); }} className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase ${videoGoal === "short" ? "bg-cyan-300/20 text-cyan-100" : "bg-white/[0.04] text-slate-300"}`}>Short video</button>
-                    <button onClick={() => { setVideoGoal("story"); setDurationPreset("Auto"); }} className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase ${videoGoal === "story" ? "bg-cyan-300/20 text-cyan-100" : "bg-white/[0.04] text-slate-300"}`}>Story video</button>
+                    <button onClick={() => { setVideoGoal("sleep"); setSelectedDurationId("30min"); }} className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase ${videoGoal === "sleep" ? "bg-cyan-300/20 text-cyan-100" : "bg-white/[0.04] text-slate-300"}`}>Sleep video</button>
+                    <button onClick={() => { setVideoGoal("relax"); setSelectedDurationId("30min"); }} className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase ${videoGoal === "relax" ? "bg-cyan-300/20 text-cyan-100" : "bg-white/[0.04] text-slate-300"}`}>Relax loop</button>
+                    <button onClick={() => { setVideoGoal("short"); setSelectedDurationId("30s"); }} className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase ${videoGoal === "short" ? "bg-cyan-300/20 text-cyan-100" : "bg-white/[0.04] text-slate-300"}`}>Short video</button>
+                    <button onClick={() => { setVideoGoal("story"); setSelectedDurationId("auto"); }} className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase ${videoGoal === "story" ? "bg-cyan-300/20 text-cyan-100" : "bg-white/[0.04] text-slate-300"}`}>Story video</button>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {durationByGoal[videoGoal].map((preset) => (
-                      <button key={preset} onClick={() => setDurationPreset(preset)} className={`rounded-lg border px-2.5 py-1 text-[10px] font-semibold ${durationPreset === preset ? "border-cyan-300/60 text-cyan-100" : "border-white/15 text-slate-300"}`}>
-                        {preset}
+                      <button key={preset.id} onClick={() => setSelectedDurationId(preset.id)} className={`rounded-lg border px-2.5 py-1 text-[10px] font-semibold ${selectedDurationId === preset.id ? "border-cyan-300/60 text-cyan-100" : "border-white/15 text-slate-300"}`}>
+                        {preset.label}
                       </button>
                     ))}
                   </div>
@@ -508,11 +534,11 @@ export default function CaplyApp() {
             <button
               type="button"
               disabled={(!caply.photos.length && !caply.videos?.length) || caply.phase === "rendering"}
-              onClick={runAutoCreateWithSelections}
+              onClick={hasRenderedOutput ? caply.handleExport : runAutoCreateWithSelections}
               className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-300 to-violet-400 font-black text-slate-950 shadow-2xl shadow-cyan-400/20 transition hover:shadow-cyan-400/35 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {caply.phase === "rendering" ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}
-              {caply.phase === "rendering" ? "Creating Story..." : `Create Story (${exportMode === "preview" ? "Preview" : "Final"})`}
+              {caply.phase === "rendering" ? <RefreshCw className="h-5 w-5 animate-spin" /> : hasRenderedOutput ? <Download className="h-5 w-5" /> : <Wand2 className="h-5 w-5" />}
+              {caply.phase === "rendering" ? "Creating Story..." : hasRenderedOutput ? "Download Video" : `Create Story (${exportMode === "preview" ? "Preview" : "Final"})`}
             </button>
           </div>
         </div>
