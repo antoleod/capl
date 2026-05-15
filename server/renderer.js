@@ -115,7 +115,9 @@ export async function renderVideo(options) {
     quality,
     aspect,
     audioSettings,
+    fps: fpsProp,
     targetFps,
+    bitrate: bitrateProp,
     targetBitrate,
     style,
     renderMode,
@@ -125,8 +127,8 @@ export async function renderVideo(options) {
   const parsedDuration = parseDurationLabelSeconds(durationLabel);
   const finalDurationSeconds = Number.isFinite(target) && target > 0 ? target : parsedDuration;
 
-  const fps = Number(targetFps) > 0 ? Number(targetFps) : 30;
-  const bitrate = targetBitrate || '';
+  const fps = Number(fpsProp ?? targetFps) > 0 ? Number(fpsProp ?? targetFps) : 30;
+  const bitrate = bitrateProp ?? targetBitrate ?? '';
   const resolution = getResolution(quality, aspect, platform);
   const qualityKey = QUALITY_MAP[quality] ? quality : '1080p';
   const baseEncode = ENCODE_PROFILE_MAP[qualityKey] || ENCODE_PROFILE_MAP['1080p'];

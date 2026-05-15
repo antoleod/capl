@@ -97,7 +97,7 @@ export const uploadAudio = async (
     });
 
     xhr.addEventListener("error", () => reject(new Error("Network error")));
-    xhr.open("POST", `${API_BASE}/upload/photos`);
+    xhr.open("POST", `${API_BASE}/upload/audio`);
     xhr.send(formData);
   });
 };

@@ -1,5 +1,3 @@
-import { v4 as uuidv4 } from 'uuid';
-
 export function parseDurationToSeconds(label) {
   const m = String(label).match(/^(\d+(?:\.\d+)?)\s*(s|m|h)?$/i);
   if (!m) return 30;

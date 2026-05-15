@@ -39,7 +39,7 @@ const cleanupOldFiles = (directory, maxAgeHours = 24) => {
       fs.stat(filePath, (err, stats) => {
         if (err) return;
         if (stats.mtimeMs < threshold) {
-          fs.unlink(filePath, (err) => {
+          fs.rm(filePath, { recursive: true, force: true }, (err) => {
             if (err) console.error(`[Cleanup] Error eliminando ${file}:`, err);
             else console.log(`[Cleanup] Archivo antiguo eliminado: ${file}`);
           });
@@ -121,6 +121,27 @@ app.post('/upload/photos', upload, (req, res) => {
 
   console.log('Files uploaded successfully:', uploadedFiles);
   res.status(200).json({ message: 'Files uploaded successfully', files: uploadedFiles });
+});
+
+// Route to handle audio uploads
+app.post('/upload/audio', upload, (req, res) => {
+  const audio = req.files?.['audio'] || [];
+
+  if (audio.length === 0) {
+    return res.status(400).json({ message: 'No audio file uploaded.' });
+  }
+
+  const uploadedFile = audio[0];
+  const uploadedFiles = [{
+    filename: uploadedFile.filename,
+    originalname: uploadedFile.originalname,
+    mimetype: uploadedFile.mimetype,
+    size: uploadedFile.size,
+    path: `/uploads/${uploadedFile.filename}`
+  }];
+
+  console.log('Audio uploaded successfully:', uploadedFiles);
+  res.status(200).json({ message: 'Audio uploaded successfully', files: uploadedFiles });
 });
 
 app.use('/outputs', express.static(OUTPUT_DIR));

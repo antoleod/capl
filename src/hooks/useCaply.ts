@@ -71,7 +71,7 @@ export function useCaply() {
   );
 
   const advancedSummary = useMemo(
-    () => `${quality} â€¢ ${fps}fps â€¢ ${bitrate}`,
+    () => `${quality} • ${fps}fps • ${bitrate}`,
     [quality, fps, bitrate]
   );
 
@@ -180,8 +180,6 @@ export function useCaply() {
           }
           sorted.push(remaining.splice(bestIdx, 1)[0]);
         }
-        const metaMap = new Map(sorted.map((p) => [p.id, p]));
-        ordered = enriched.map((p) => metaMap.get(p.id) || p);
         ordered = sorted;
       }
 
@@ -195,9 +193,9 @@ export function useCaply() {
   const mediaCount = allMedia.length;
 
   const reorderMedia = useCallback((oldIndex: number, newIndex: number) => {
-    // Nota: Para implementar reordenamiento real entre fotos y videos 
-    // se necesitarÃ­a unificar los estados, pero para esta mejora UI 
-    // exponemos la capacidad de gestiÃ³n.
+    // Nota: Para implementar reordenamiento real entre fotos y videos
+    // se necesitaría unificar los estados, pero para esta mejora UI
+    // exponemos la capacidad de gestión.
     console.log(`Reordering from ${oldIndex} to ${newIndex}`);
   }, []);
 
@@ -431,7 +429,7 @@ export function useCaply() {
 
     try {
       setPhase("rendering");
-      setStep("Uploading photosâ€¦");
+      setStep("Uploading photos…");
       setUploadProgress(5);
 
       const sessionId = crypto.randomUUID();
@@ -445,7 +443,7 @@ export function useCaply() {
       let audioPath: string | null = null;
 
       if (audio) {
-        setStep("Uploading audioâ€¦");
+        setStep("Uploading audio…");
         audioPath = await uploadAudio(audio.file, sessionId, (pct) => setUploadProgress(pct));
       }
 
@@ -613,7 +611,7 @@ export function useCaply() {
     if (!outputUrl) return;
 
     try {
-      setStep("Downloadingâ€¦");
+      setStep("Downloading…");
       const blob = await downloadBlob(outputUrl);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
